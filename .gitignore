@@ -9,7 +9,11 @@
 *.fits
 *.vot
 *.dat
+*.txt
 
 # Images
 *.jpg
 *.png
+
+# Temporary
+.~lock*

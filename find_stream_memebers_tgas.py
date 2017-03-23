@@ -83,8 +83,7 @@ for tgas_fits in tgas_fits_files:
                                                  np.abs(pmdec_stream_predicted - tgas_data['pmdec']) <= pmdec_thr),
                                   np.logical_and(tgas_data['parsec'].data <= parsec_thr,
                                                  tgas_data['parsec'].data > 0.))
-    idx_possible = np.logical_and(,
-                                  idx_possible)
+
     # idx_possible = np.logical_and(np.abs(rv_stream_predicted - tgas_data['rv_guess']) <= rv_thr,
     #                               idx_possible)
     n_possible = np.sum(idx_possible)
