@@ -103,7 +103,43 @@ def plot_members_location_motion_theoretical(ra, dec, pmra_pred, pmdec_pred, rad
     plt.close()
 
 
-def plot_members_location_velocity():
-    return None
+def plot_members_location_velocity(gaia, rv=None, idx=None, radiant=None,
+                                   path='members.png', title=''):
+    """
+
+    :param gaia:
+    :param idx:
+    :param radiant:
+    :param path:
+    :param title:
+    :return:
+    """
+    if idx is None:
+        # use all datarows
+        idx = np.ndarray(len(gaia))
+        idx.fill(True)
+    use_gaia_data = gaia[idx]
+    # plot location of the stars
+    if radiant is not None:
+        plt.scatter(radiant[0], radiant[1], lw=0, s=15, c='black', marker='*')
+    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=1)
+    gaia_features = gaia.colnames
+    if rv is None and 'RV' in gaia_features:
+        rv_plot = use_gaia_data['RV']
+    elif rv is not None:
+        rv_plot = rv[idx]
+    if 'rv_plot' in locals():
+        plt.quiver(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], rv_plot, 0.,
+                   pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
+    # annotate graph
+    plt.xlabel('RA [deg]')
+    plt.ylabel('DEC [deg]')
+    plt.title(title)
+    plt.xlim((0, 360))
+    plt.ylim((-90, 90))
+    # save graph
+    plt.tight_layout()
+    plt.savefig(path, dpi=250)
+    plt.close()
 
 
