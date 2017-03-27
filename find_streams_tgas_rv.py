@@ -2,7 +2,7 @@ import imp, os, glob
 import astropy.units as u
 import astropy.coordinates as coord
 
-from astropy.table import Table, join, Column, vstack
+from astropy.table import Table, join, Column, vstack, unique
 from velocity_transformations import *
 from find_streams_plots import *
 from find_streams_analysis import *
@@ -13,8 +13,14 @@ from helper import move_to_dir
 imp.load_source('galmove', '../tSNE_test/convert_gal_movement.py')
 from galmove import *
 
+imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
+from veltrans import *
+
 imp.load_source('tsne', '../tSNE_test/tsne_functions.py')
 from tsne import *
+
+imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
+from norm import *
 
 
 # --------------------------------------------------------
@@ -30,6 +36,42 @@ def parse_selected_streams(subdir):
         result[2].append(float(filename_split[filename_split.index('rv') + 1]))
     return result
 
+
+def quick_tnse_plot(tsne_data, path='tsne.png', colorize=None):
+    if colorize is None:
+        plt.scatter(tsne_data['tsne_axis_1'], tsne_data['tsne_axis_2'], lw=0, s=0.5)
+    else:
+        plt.scatter(tsne_data['tsne_axis_1'], tsne_data['tsne_axis_2'], lw=0, s=0.5, c=colorize)
+        plt.colorbar()
+    plt.savefig(path, dpi=300)
+    plt.close()
+
+
+def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan', perp=80, theta=0.2):
+    if os.path.isfile(out_file):
+        tsne_final = Table.read(out_file)
+    else:
+        if norm:
+            data_temp = np.array(data)
+            norm_param = normalize_data(data_temp, method='standardize')
+            tsne_result = bh_tsne(data_temp, no_dims=2, perplexity=perp, theta=theta, randseed=-1,
+                                  verbose=True, distance=distance)
+        else:
+            tsne_result = bh_tsne(data, no_dims=2, perplexity=perp, theta=theta, randseed=-1,
+                                  verbose=True, distance=distance)
+        tsne_ax1, tsne_ax2 = tsne_results_to_columns(tsne_result)
+        tsne_final = tsne_table_with_results(tgas_data, ['sobject_id', 'galah_id', 'RAVE_OBS_ID', 'RAVEID'],
+                                             tsne_ax1, tsne_ax2)
+        tsne_final.write(out_file, format='fits')
+    return tsne_final
+
+
+# --------------------------------------------------------
+# ---------------- Constants and settings ----------------
+# --------------------------------------------------------
+TSNE_PERFORM = True
+TSNE_NORM = True
+
 # --------------------------------------------------------
 # ---------------- Read Data -----------------------------
 # --------------------------------------------------------
@@ -37,45 +79,96 @@ def parse_selected_streams(subdir):
 print 'Reading data sets'
 galah_data_dir = '/home/klemen/GALAH_data/'  # the same for gigli and local pc
 rave_data_dir = '/home/klemen/RAVE_data/'
-galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')
-galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
-rave_param = Table.read(rave_data_dir+'RAVE_DR5.fits')
-rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
-# do some column name housekeeping for consistent naming between the data sets
-galah_param['rv_guess'].name = 'RV'
-rave_param['HRV'].name = 'RV'
-rave_param['parallax'].name = 'parallax_photo'
-rave_tgas['ra'].name = 'ra_gaia'
-rave_tgas['dec'].name = 'dec_gaia'
 
-# join datasets
-print 'Joining RAVE and GALAH sets into one'
-use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'parallax', 'pmra', 'pmdec', 'pmdec_error', 'pmra_error', 'parallax_error']
-use_columns_galah = ['sobject_id', 'galah_id']
-use_columns_galah.extend(use_columns)
-use_columns_rave = ['RAVE_OBS_ID', 'RAVEID']
-use_columns_rave.extend(use_columns)
-galah_joined = join(galah_param, galah_tgas_xmatch, keys='sobject_id', join_type='inner')
-rave_joined = join(rave_param, rave_tgas, keys='RAVE_OBS_ID', join_type='inner')
-tgas_data = vstack([galah_joined[use_columns_galah], rave_joined[use_columns_rave]], join_type='outer')
+out_file_fits = 'RAVE_GALAH_TGAS_stack.fits'
+if os.path.isfile(out_file_fits):
+    tgas_data = Table.read(out_file_fits)
+else:
+    galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')
+    galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
+    rave_param = Table.read(rave_data_dir+'RAVE_DR5.fits')
+    rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
+    # do some column name housekeeping for consistent naming between the data sets
+    galah_param['rv_guess'].name = 'RV'
+    rave_param['HRV'].name = 'RV'
+    rave_param['parallax'].name = 'parallax_photo'
+    rave_tgas['ra'].name = 'ra_gaia'
+    rave_tgas['dec'].name = 'dec_gaia'
+
+    # join datasets
+    print 'Joining RAVE and GALAH sets into one'
+    use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'parallax', 'pmra', 'pmdec', 'pmdec_error', 'pmra_error', 'parallax_error']
+    use_columns_galah = ['sobject_id', 'galah_id']
+    use_columns_galah.extend(use_columns)
+    use_columns_rave = ['RAVE_OBS_ID', 'RAVEID']
+    use_columns_rave.extend(use_columns)
+    galah_joined = join(galah_param, galah_tgas_xmatch, keys='sobject_id', join_type='inner')
+    rave_joined = join(rave_param, rave_tgas, keys='RAVE_OBS_ID', join_type='inner')
+    tgas_data = vstack([galah_joined[use_columns_galah], rave_joined[use_columns_rave]], join_type='outer')
+    tgas_data.write(out_file_fits, format='fits')
 
 # perform some data cleaning and housekeeping
 idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far away or problems in data reduction
 idx = np.logical_and(np.abs(tgas_data['pmra']) < tgas_data['pmra_error'],
                      np.abs(tgas_data['pmdec']) < tgas_data['pmdec_error'])
-print tgas_data['pmra', 'pmra_error', 'pmdec', 'pmdec_error'][idx]
-print np.sum(np.max(tgas_data['pmra']))
-print np.sum(np.max(tgas_data['pmdec']))
+# print tgas_data['pmra', 'pmra_error', 'pmdec', 'pmdec_error'][idx]
+# print np.sum(np.max(tgas_data['pmra']))
+# print np.sum(np.max(tgas_data['pmdec']))
+# validate data
+idx_ok = np.logical_and(idx_ok,
+                        np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
+
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
+print 'Number of observations: '+str(len(tgas_data))
 
+# remove problems with masks
+tgas_data = tgas_data.filled()
+
+# remove duplicates
+# tgas_data = unique(tgas_data, keys=['sobject_id'])
+# print len(tgas_data)
+# tgas_data = unique(tgas_data, keys='RAVEID')
+# print len(tgas_data)
+
+print 'Final number of observations: '+str(len(tgas_data))
+
+# --------------------------------------------------------
+# ---------------- Compute different galactic velocities - cartesian and cylindrical
+# --------------------------------------------------------
 # convert parallax to parsec distance
 star_parsec = (tgas_data['parallax'].data * u.mas).to(u.parsec, equivalencies=u.parallax()) # use of .data to remove units as they are not handled correctly by astropy
 tgas_data.add_column(Column(star_parsec, name='parsec'))
 
-# remove problems with masks
-tgas_data = tgas_data.filled()
-print 'Final number of observations: '+str(len(tgas_data))
+# cylindrical uvw velocity computation
+u, v, w = gal_uvw(np.array(tgas_data['ra_gaia']), np.array(tgas_data['dec_gaia']),
+                  np.array(tgas_data['pmra']), np.array(tgas_data['pmdec']),
+                  np.array(tgas_data['RV']), np.array(tgas_data['parallax']))
+uvw_vel = np.transpose(np.vstack((u, v, w)))
+
+# cartesian xyz velocity computation
+xyz_vel = motion_to_cartesic(np.array(tgas_data['ra_gaia']), np.array(tgas_data['dec_gaia']),
+                             np.array(tgas_data['pmra']), np.array(tgas_data['pmdec']),
+                             np.array(tgas_data['RV']), plx=np.array(tgas_data['parallax']))
+xyz_vel = np.transpose(xyz_vel)
+
+if TSNE_PERFORM:
+    perp = 70
+    theta = 0.3
+    suffix = '_perp_{:02.0f}_theta_{:01.1f}'.format(perp, theta)
+    if TSNE_NORM:
+        suffix += '_norm'
+    # run t-sne on newly computed uvw velocities
+    file_uvw_tsne_out = 'streams_tsne_uvw'+suffix+'.fits'
+    uvw_tsne_final = run_tsne(uvw_vel, norm=TSNE_NORM, out_file='streams_tsne_uvw' + suffix + '.fits', distance='manhattan',
+                              perp=perp, theta=theta)
+    quick_tnse_plot(uvw_tsne_final, path='streams_tsne_uvw'+suffix+'.png')
+
+    # run t-sne on newly computed cartesian xyz velocities
+    file_xyz_tsne_out = 'streams_tsne_xyz'+suffix+'.fits'
+    xyz_tsne_final = run_tsne(xyz_vel, norm=TSNE_NORM, out_file='streams_tsne_xyz' + suffix + '.fits', distance='manhattan',
+                              perp=perp, theta=theta)
+    quick_tnse_plot(xyz_tsne_final, path='streams_tsne_xyz'+suffix+'.png')
 
 # --------------------------------------------------------
 # ---------------- Stream search parameters --------------
