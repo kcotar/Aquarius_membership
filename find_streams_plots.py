@@ -32,7 +32,7 @@ def plot_theoretical_motion(v_xyz_stream, img_prefix='', dist=1000):
     plt.close()
 
 
-def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None, radiant=None,
+def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None, radiant=None, add_errors=None,
                                  path='members.png', title=''):
     """
 
@@ -53,8 +53,12 @@ def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None
     # plot location of the stars
     if radiant is not None:
         plt.scatter(radiant[0], radiant[1], lw=0, s=15, c='black', marker='*')
-    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=1)
+    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=4)
     gaia_features = gaia.colnames
+    if add_errors:
+        if 'pmra_error' in gaia_features and 'pmdec_error' in gaia_features:
+            plt.errorbar(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'],
+                         xerr=use_gaia_data['pmra_error'], yerr=use_gaia_data['pmdec_error'], fmt='o', ecolor='black', markersize=0, capsize=0)
     if 'pmra' in gaia_features and 'pmdec' in gaia_features:
         plt.quiver(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], use_gaia_data['pmra'], use_gaia_data['pmdec'],
                    pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
@@ -88,7 +92,7 @@ def plot_members_location_motion_theoretical(ra, dec, pmra_pred, pmdec_pred, rad
     """
     if radiant is not None:
         plt.scatter(radiant[0], radiant[1], lw=0, s=15, c='black', marker='*')
-    plt.scatter(ra, dec, lw=0, c='black', s=1)
+    plt.scatter(ra, dec, lw=0, c='black', s=4)
     plt.quiver(ra, dec, pmra_pred, pmdec_pred,
                pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
     # annotate graph
@@ -103,7 +107,7 @@ def plot_members_location_motion_theoretical(ra, dec, pmra_pred, pmdec_pred, rad
     plt.close()
 
 
-def plot_members_location_velocity(gaia, rv=None, idx=None, radiant=None,
+def plot_members_location_velocity(gaia, rv=None, rv_ref=None, idx=None, radiant=None,
                                    path='members.png', title=''):
     """
 
@@ -121,16 +125,21 @@ def plot_members_location_velocity(gaia, rv=None, idx=None, radiant=None,
     use_gaia_data = gaia[idx]
     # plot location of the stars
     if radiant is not None:
-        plt.scatter(radiant[0], radiant[1], lw=0, s=15, c='black', marker='*')
-    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=1)
+        plt.scatter(radiant[0], radiant[1], lw=0, s=25, c='black', marker='*')
+    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=4)
     gaia_features = gaia.colnames
+    # plot rv vectors
+    dec_offset = -0.2
     if rv is None and 'RV' in gaia_features:
         rv_plot = use_gaia_data['RV']
     elif rv is not None:
         rv_plot = rv[idx]
     if 'rv_plot' in locals():
-        plt.quiver(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], rv_plot, 0.,
+        plt.quiver(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia']-dec_offset, rv_plot, 0.,
                    pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
+    if rv_ref is not None:
+        plt.quiver(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia']+dec_offset, rv_ref[idx], 0.,
+                   pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
     # annotate graph
     plt.xlabel('RA [deg]')
     plt.ylabel('DEC [deg]')

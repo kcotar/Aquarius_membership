@@ -28,12 +28,16 @@ from norm import *
 # --------------------------------------------------------
 def parse_selected_streams(subdir):
     png_files = glob.glob(subdir+'/stream_*_radiant-3D.png')
-    result = list([[], [], []])
+    result = list([[], [], [], []])
     for filename in png_files:
         filename_split = filename.split('/')[1].split('_')
         result[0].append(float(filename_split[filename_split.index('ra') + 1]))
         result[1].append(float(filename_split[filename_split.index('dec') + 1]))
         result[2].append(float(filename_split[filename_split.index('rv') + 1]))
+        if 'dist' in filename_split:
+            result[3].append(float(filename_split[filename_split.index('rv') + 1]))
+        else:
+            result[3].append(np.nan)
     return result
 
 
@@ -41,7 +45,7 @@ def quick_tnse_plot(tsne_data, path='tsne.png', colorize=None):
     if colorize is None:
         plt.scatter(tsne_data['tsne_axis_1'], tsne_data['tsne_axis_2'], lw=0, s=0.5)
     else:
-        plt.scatter(tsne_data['tsne_axis_1'], tsne_data['tsne_axis_2'], lw=0, s=0.5, c=colorize)
+        plt.scatter(tsne_data['tsne_axis_1'], tsne_data['tsne_axis_2'], lw=0, s=0.5, c=colorize, cmap='jet')
         plt.colorbar()
     plt.savefig(path, dpi=300)
     plt.close()
@@ -54,6 +58,8 @@ def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan'
         if norm:
             data_temp = np.array(data)
             norm_param = normalize_data(data_temp, method='standardize')
+            print 'Normalization parameters:'
+            print norm_param
             tsne_result = bh_tsne(data_temp, no_dims=2, perplexity=perp, theta=theta, randseed=-1,
                                   verbose=True, distance=distance)
         else:
@@ -69,7 +75,7 @@ def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan'
 # --------------------------------------------------------
 # ---------------- Constants and settings ----------------
 # --------------------------------------------------------
-TSNE_PERFORM = True
+TSNE_PERFORM = False
 TSNE_NORM = True
 
 # --------------------------------------------------------
@@ -90,14 +96,16 @@ else:
     rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
     # do some column name housekeeping for consistent naming between the data sets
     galah_param['rv_guess'].name = 'RV'
+    galah_param['feh_guess'].name = 'M_H'
     rave_param['HRV'].name = 'RV'
     rave_param['parallax'].name = 'parallax_photo'
+    rave_param['Met_K'].name = 'M_H'
     rave_tgas['ra'].name = 'ra_gaia'
     rave_tgas['dec'].name = 'dec_gaia'
 
     # join datasets
     print 'Joining RAVE and GALAH sets into one'
-    use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'parallax', 'pmra', 'pmdec', 'pmdec_error', 'pmra_error', 'parallax_error']
+    use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'parallax', 'pmra', 'pmdec', 'pmdec_error', 'pmra_error', 'parallax_error', 'M_H']
     use_columns_galah = ['sobject_id', 'galah_id']
     use_columns_galah.extend(use_columns)
     use_columns_rave = ['RAVE_OBS_ID', 'RAVEID']
@@ -126,10 +134,7 @@ print 'Number of observations: '+str(len(tgas_data))
 tgas_data = tgas_data.filled()
 
 # remove duplicates
-# tgas_data = unique(tgas_data, keys=['sobject_id'])
-# print len(tgas_data)
-# tgas_data = unique(tgas_data, keys='RAVEID')
-# print len(tgas_data)
+tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
 
 print 'Final number of observations: '+str(len(tgas_data))
 
@@ -153,8 +158,8 @@ xyz_vel = motion_to_cartesic(np.array(tgas_data['ra_gaia']), np.array(tgas_data[
 xyz_vel = np.transpose(xyz_vel)
 
 if TSNE_PERFORM:
-    perp = 70
-    theta = 0.3
+    perp = 80
+    theta = 0.2
     suffix = '_perp_{:02.0f}_theta_{:01.1f}'.format(perp, theta)
     if TSNE_NORM:
         suffix += '_norm'
@@ -169,6 +174,8 @@ if TSNE_PERFORM:
     xyz_tsne_final = run_tsne(xyz_vel, norm=TSNE_NORM, out_file='streams_tsne_xyz' + suffix + '.fits', distance='manhattan',
                               perp=perp, theta=theta)
     quick_tnse_plot(xyz_tsne_final, path='streams_tsne_xyz'+suffix+'.png')
+    # exit program
+    raise SystemExit
 
 # --------------------------------------------------------
 # ---------------- Stream search parameters --------------
@@ -180,19 +187,19 @@ if TSNE_PERFORM:
 # de_stream = np.deg2rad(13.)  # delta - DEC
 
 # stream search criteria
-rv_step = 20.  # km/s, rv in the radiant of the stream
+rv_step = 15.  # km/s, rv in the radiant of the stream
 ra_step = 10.  # deg
 dec_step = 10.  # deg
 
 # results thresholds in percent from theoretical value
-rv_thr = 10.
-pmra_thr = 10.
-pmdec_thr = 10.
+rv_thr = 15.
+pmra_thr = 15.
+pmdec_thr = 15.
 
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None #[[10], [34], [45]]  # list of ra, dec, rv values
+manual_stream_radiants = None # [[90], [0], [45]]  # list of ra, dec, rv values
 manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -200,7 +207,7 @@ if manual_stream_radiants is not None:
     dec_combinations = manual_stream_radiants[1]
     rv_combinations = manual_stream_radiants[2]
 else:
-    rv_range = np.arange(5, 320, rv_step)
+    rv_range = np.arange(55, 320, rv_step)
     ra_range = np.arange(0, 360, ra_step)
     dec_range = np.arange(-90, 90, dec_step)
     # create a grid of all possible combination
@@ -211,7 +218,7 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of evaluated stream combinations: '+str(n_combinations)
 
-move_to_dir('Streams_investigation_lower-thr_selected_rerun')
+move_to_dir('Streams_investigation_lower-thr')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -232,6 +239,13 @@ for i_stream in range(n_combinations):
                                            np.deg2rad(tgas_data['dec_gaia']),
                                            tgas_data['parsec'],
                                            v_xyz_stream)
+
+    # compute predicted distances based on measured pmra and pmdec and assumed velocities of observed stream
+    parsec_pmra = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']),
+                                        np.deg2rad(tgas_data['dec_gaia']),
+                                        v_xyz_stream)
+
+
     # filter data based on predefined search criteria
     idx_possible = np.logical_and(np.logical_and(np.abs((pmra_stream_predicted - tgas_data['pmra'])/pmra_stream_predicted) <= pmra_thr/100.,
                                                  np.abs((pmdec_stream_predicted - tgas_data['pmdec'])/pmdec_stream_predicted) <= pmdec_thr/100.),
@@ -253,19 +267,23 @@ for i_stream in range(n_combinations):
 
         # plot results of the comparison of proper motion
         plot_members_location_motion(tgas_data, pmra_stream_predicted, pmdec_stream_predicted, idx_possible,
-                                     path='stream' + suffix + '_proper.png', radiant=stream_radiant,
+                                     path='stream' + suffix + '_proper.png', radiant=stream_radiant, add_errors=False,
                                      title='Observations similar to the predictions at stellar distance.')
-        plot_members_location_motion_theoretical(ra_sim, dec_sim, pmra_sim, pmdec_sim,
-                                                 radiant=stream_radiant, path='stream'+suffix+'_proper_sim.png',
-                                                 title='Theoretical proper motion for stars at 0.5 kpc.')
+        # plot_members_location_motion_theoretical(ra_sim, dec_sim, pmra_sim, pmdec_sim,
+        #                                          radiant=stream_radiant, path='stream'+suffix+'_proper_sim.png',
+        #                                          title='Theoretical proper motion for stars at 0.5 kpc.')
 
         # plot radial velocities
-        plot_members_location_velocity(tgas_data, idx=idx_possible, radiant=stream_radiant,
-                                       path='stream'+suffix+'_rv.png', title='Radial velocity of possible members')
-        plot_members_location_velocity(tgas_data, rv=rv_stream_predicted, idx=idx_possible, radiant=stream_radiant,
-                                       path='stream' + suffix + '_rv_sim.png', title='Predicted radial velocity of possible members')
+        plot_members_location_velocity(tgas_data, rv_ref=rv_stream_predicted, idx=idx_possible, radiant=stream_radiant,
+                                       path='stream' + suffix + '_rv_sim.png', title='Radial velocity of possible members.')
 
+        # plot theoretical curves for pmra, pmdec and rv, based on stream location and stream radial velocity
         # plot_theoretical_motion(v_xyz_stream, img_prefix='stream'+suffix, dist=1000)
 
-        d = STREAM(tgas_data[idx_possible])
-        d.stream_show(radiant=stream_radiant)#, path='stream'+suffix+'_radiant-3D.png')
+        # perform possible stream analysis and filter out stars that do not belong in the same cluster
+        d = STREAM(tgas_data[idx_possible],
+                   uvw_vel=uvw_vel[idx_possible], xyz_vel=xyz_vel[idx_possible], radiant=stream_radiant)
+        d.estimate_stream_dimensions(path='stream'+suffix+'_radiant.png')  # , color=tgas_data[idx_possible]['M_H'])
+        d.stream_show(view_pos=stream_radiant, path='stream'+suffix+'_radiant-3D.png')
+        d.plot_velocities(uvw=True, xyz=False, path='stream'+suffix+'_vel_uvw.png')
+        d.plot_velocities(uvw=False, xyz=True, path='stream'+suffix+'_vel_xyz.png')

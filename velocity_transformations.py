@@ -61,3 +61,27 @@ def compute_pmdec(ra, dec, dist, vel):
     :return:
     """
     return F / dist * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+
+
+def compute_distance_pmra(ra, dec, vel, pmra):
+    """
+
+    :param ra:
+    :param dec:
+    :param vel:
+    :param pmra:
+    :return:
+    """
+    return F / pmra * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+
+
+def compute_distance_pmdec(ra, dec, vel, pmdec):
+    """
+
+    :param ra:
+    :param dec:
+    :param vel:
+    :param pmra:
+    :return:
+    """
+    return F / pmdec * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
