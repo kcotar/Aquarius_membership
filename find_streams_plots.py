@@ -32,7 +32,7 @@ def plot_theoretical_motion(v_xyz_stream, img_prefix='', dist=1000):
     plt.close()
 
 
-def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None, radiant=None, add_errors=None,
+def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None, radiant=None, add_errors=None, color=None,
                                  path='members.png', title=''):
     """
 
@@ -53,7 +53,11 @@ def plot_members_location_motion(gaia, pmra_pred=None, pmdec_pred=None, idx=None
     # plot location of the stars
     if radiant is not None:
         plt.scatter(radiant[0], radiant[1], lw=0, s=15, c='black', marker='*')
-    plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=4)
+    if color is None:
+        plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c='black', s=5)
+    else:
+        plt.scatter(use_gaia_data['ra_gaia'], use_gaia_data['dec_gaia'], lw=0, c=color, s=5)
+        plt.colorbar()
     gaia_features = gaia.colnames
     if add_errors:
         if 'pmra_error' in gaia_features and 'pmdec_error' in gaia_features:

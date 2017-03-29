@@ -37,7 +37,7 @@ def parse_selected_streams(subdir):
         if 'dist' in filename_split:
             result[3].append(float(filename_split[filename_split.index('rv') + 1]))
         else:
-            result[3].append(np.nan)
+            result[3].append(None)
     return result
 
 
@@ -99,7 +99,7 @@ else:
     galah_param['feh_guess'].name = 'M_H'
     rave_param['HRV'].name = 'RV'
     rave_param['parallax'].name = 'parallax_photo'
-    rave_param['Met_K'].name = 'M_H'
+    rave_param['Met_N_K'].name = 'M_H'
     rave_tgas['ra'].name = 'ra_gaia'
     rave_tgas['dec'].name = 'dec_gaia'
 
@@ -190,42 +190,52 @@ if TSNE_PERFORM:
 rv_step = 15.  # km/s, rv in the radiant of the stream
 ra_step = 10.  # deg
 dec_step = 10.  # deg
+dist_step = None  # 200  # pc
 
 # results thresholds in percent from theoretical value
 rv_thr = 15.
 pmra_thr = 15.
 pmdec_thr = 15.
+parsec_thr = 10.
 
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None # [[90], [0], [45]]  # list of ra, dec, rv values
-manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
+manual_stream_radiants = [[90], [0], [50], [None]]  # list of ra, dec, rv values
+# manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
     ra_combinations = manual_stream_radiants[0]
     dec_combinations = manual_stream_radiants[1]
     rv_combinations = manual_stream_radiants[2]
+    dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(55, 320, rv_step)
-    ra_range = np.arange(0, 360, ra_step)
-    dec_range = np.arange(-90, 90, dec_step)
+    rv_range = np.arange(25, 320, rv_step)
+    ra_range = np.arange(40, 360, ra_step)
+    dec_range = np.arange(-70, 70, dec_step)
+    if dist_step is not None:
+        dist_range = np.arange(50, 1600, dist_step)
+    else:
+        dist_range = [np.nan]
     # create a grid of all possible combination
-    stream_mesh = np.meshgrid(ra_range, dec_range, rv_range)
+    stream_mesh = np.meshgrid(ra_range, dec_range, rv_range, dist_range)
     ra_combinations = stream_mesh[0].flatten()
     dec_combinations = stream_mesh[1].flatten()
     rv_combinations = stream_mesh[2].flatten()
+    dist_combinations = stream_mesh[3].flatten()
 n_combinations = len(ra_combinations)
-print 'Total number of evaluated stream combinations: '+str(n_combinations)
+print 'Total number stream combinations that will be evaluated: '+str(n_combinations)
 
-move_to_dir('Streams_investigation_lower-thr')
+move_to_dir('Streams_investigation_lower-thr_2')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
     rv_stream = rv_combinations[i_stream]
+    dist_stream = dist_combinations[i_stream]
 
     # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
     v_xyz_stream = compute_xyz_vel(np.deg2rad(ra_stream), np.deg2rad(dec_stream), rv_stream)
+    print v_xyz_stream
 
     # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
     rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']),
@@ -243,17 +253,32 @@ for i_stream in range(n_combinations):
     # compute predicted distances based on measured pmra and pmdec and assumed velocities of observed stream
     parsec_pmra = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']),
                                         np.deg2rad(tgas_data['dec_gaia']),
+                                        tgas_data['pmra'],
                                         v_xyz_stream)
+    parsec_pmdec = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']),
+                                          np.deg2rad(tgas_data['dec_gaia']),
+                                          tgas_data['pmdec'],
+                                          v_xyz_stream)
 
-
-    # filter data based on predefined search criteria
+    # # filter data based on predefined search criteria
     idx_possible = np.logical_and(np.logical_and(np.abs((pmra_stream_predicted - tgas_data['pmra'])/pmra_stream_predicted) <= pmra_thr/100.,
                                                  np.abs((pmdec_stream_predicted - tgas_data['pmdec'])/pmdec_stream_predicted) <= pmdec_thr/100.),
                                   np.logical_and(np.abs((rv_stream_predicted - tgas_data['RV'])/rv_stream_predicted) <= rv_thr/100.,
                                                  tgas_data['parsec'].data > 0.))
+
+    # # filter data based on their observed and calculated distance
+    # parsec_mean = (parsec_pmra + parsec_pmdec + tgas_data['parsec'])/3.
+    # idx_possible = np.logical_and(np.logical_and(np.abs((parsec_mean - parsec_pmra)/parsec_mean) <= parsec_thr/100.,
+    #                                              np.abs((parsec_mean - parsec_pmdec) / parsec_mean) <= parsec_thr/100.),
+    #                               np.logical_and(np.abs((parsec_mean - tgas_data['parsec']) / parsec_mean) <= parsec_thr/100.,
+    #                                              tgas_data['parsec'].data > 0.))
+    # # confirm the star selection based on the radial velocity measurement
+    # idx_possible = np.logical_and(idx_possible,
+    #                               np.abs((rv_stream_predicted - tgas_data['RV']) / rv_stream_predicted) <= rv_thr / 100)
+
     n_possible = np.sum(idx_possible)
     print ' Possible members: ' + str(n_possible) + ' for stream from ra={:3.1f} dec={:2.1f} with rv velocity of {:3.1f}'.format(ra_stream, dec_stream, rv_stream)
-    if n_possible < 5:
+    if n_possible < 20:
         continue
     else:
         # plot results for visual and later automatised inspection of the candidates
@@ -268,7 +293,7 @@ for i_stream in range(n_combinations):
         # plot results of the comparison of proper motion
         plot_members_location_motion(tgas_data, pmra_stream_predicted, pmdec_stream_predicted, idx_possible,
                                      path='stream' + suffix + '_proper.png', radiant=stream_radiant, add_errors=False,
-                                     title='Observations similar to the predictions at stellar distance.')
+                                     title='Observations similar to the predictions at stellar distance.', color=tgas_data[idx_possible]['M_H'])
         # plot_members_location_motion_theoretical(ra_sim, dec_sim, pmra_sim, pmdec_sim,
         #                                          radiant=stream_radiant, path='stream'+suffix+'_proper_sim.png',
         #                                          title='Theoretical proper motion for stars at 0.5 kpc.')
@@ -280,10 +305,17 @@ for i_stream in range(n_combinations):
         # plot theoretical curves for pmra, pmdec and rv, based on stream location and stream radial velocity
         # plot_theoretical_motion(v_xyz_stream, img_prefix='stream'+suffix, dist=1000)
 
+        # --------------------------------------------------------
+        # ---------------- Stream analysis -----------------------
+        # --------------------------------------------------------
         # perform possible stream analysis and filter out stars that do not belong in the same cluster
         d = STREAM(tgas_data[idx_possible],
                    uvw_vel=uvw_vel[idx_possible], xyz_vel=xyz_vel[idx_possible], radiant=stream_radiant)
-        d.estimate_stream_dimensions(path='stream'+suffix+'_radiant.png')  # , color=tgas_data[idx_possible]['M_H'])
-        d.stream_show(view_pos=stream_radiant, path='stream'+suffix+'_radiant-3D.png')
-        d.plot_velocities(uvw=True, xyz=False, path='stream'+suffix+'_vel_uvw.png')
-        d.plot_velocities(uvw=False, xyz=True, path='stream'+suffix+'_vel_xyz.png')
+        d.estimate_stream_dimensions(path='stream'+suffix+'_radiant.png', color=tgas_data[idx_possible]['M_H'])
+        # d.stream_show(view_pos=stream_radiant, path='stream'+suffix+'_radiant-3D.png')
+        d.find_overdensities(path='stream'+suffix+'_radiant_dbscan.png')
+        analysis_res = d.analyse_overdensities(xyz_stream=v_xyz_stream, path_prefix='stream' + suffix + '_radiant_dbscan')
+        print analysis_res
+        # d.plot_velocities(uvw=True, xyz=False, path='stream'+suffix+'_vel_uvw.png')
+        d.plot_velocities(uvw=False, xyz=True, xyz_stream=v_xyz_stream, path='stream'+suffix+'_vel_xyz.png')
+

@@ -1,8 +1,9 @@
 import astropy.units as u
 import astropy.coordinates as coord
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.cluster import DBSCAN
 
 
 class STREAM:
@@ -36,6 +37,10 @@ class STREAM:
             self.xyz_vel = xyz_vel
         else:
             self.xyz_vel = None
+        # clusters analysis
+        self.cluster_labels = None
+        self.cluster_ids = None
+        self.n_clusters = None
 
     def _rotate_coordinate_system(self):
         """
@@ -84,6 +89,7 @@ class STREAM:
         """
 
         :param path:
+        :param view_pos:
         :return:
         """
         plot_lim = (-2000, 2000)
@@ -107,22 +113,28 @@ class STREAM:
             plt.savefig(path)
         plt.close()
 
-    def plot_velocities(self, uvw=False, xyz=False, path='vel.png'):
+    def plot_velocities(self, uvw=False, xyz=False, uvw_stream=None, xyz_stream=None, path='vel.png'):
         plot_lim = (-20, 20)
         if xyz and self.xyz_vel is not None:
             plot_data = self.xyz_vel
             labels = ['X', 'Y', 'Z']
+            stream_center = xyz_stream
         elif uvw and self.uvw_vel is not None:
             plot_data = self.uvw_vel
             labels = ['U', 'V', 'W']
+            stream_center = uvw_stream
         # Create a plot
         plot_comb = [[0,1], [2,1], [0,2]]
         plot_pos = [[0,0], [0,1], [1,0]]
         fig, ax = plt.subplots(2, 2)
         for i_c in range(len(plot_comb)):
             fig_pos = (plot_pos[i_c][0], plot_pos[i_c][1])
-            ax[fig_pos].scatter(plot_data[:,plot_comb[i_c][0]], plot_data[:,plot_comb[i_c][1]], lw=0, c='black', s=2)
-            ax[fig_pos].set(xlabel=labels[plot_comb[i_c][0]], ylabel=labels[plot_comb[i_c][1]])#, xlim=plot_lim, ylim=plot_lim)
+            i_x = plot_comb[i_c][0]
+            i_y = plot_comb[i_c][1]
+            if stream_center is not None:
+                ax[fig_pos].scatter(stream_center[i_x], stream_center[i_y], lw=0, c='black', s=10, marker='*')
+            ax[fig_pos].scatter(plot_data[:,i_x], plot_data[:,i_y], lw=0, c='blue', s=2, alpha=0.35)
+            ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y])#, xlim=plot_lim, ylim=plot_lim)
         plt.savefig(path, dpi=250)
         plt.close()
 
@@ -166,3 +178,58 @@ class STREAM:
         # also return computed parameters
         return self.stream_params
 
+    def find_overdensities(self, path='dbscan.png'):
+        """
+
+        :param path:
+        :return:
+        """
+        # first prepare data if they are not available yet
+        if self.cartesian_rotated is None:
+            self._rotate_coordinate_system()
+        m_s = 3
+        e_v = 75
+        dbscan_data = np.transpose(np.vstack((self.cartesian_rotated.x.value, self.cartesian_rotated.y.value)))
+        db_fit = DBSCAN(min_samples=m_s, eps=e_v, algorithm='auto', metric='euclidean', n_jobs=16).fit(dbscan_data)
+        self.cluster_labels = db_fit.labels_
+        self.cluster_ids = set(self.cluster_labels)
+        self.n_clusters = len(self.cluster_ids)
+        if path is not None:
+            self.estimate_stream_dimensions(path=path, color=self.cluster_labels)
+
+    def analyse_overdensities(self, xyz_stream=None, path_prefix='dbscan'):
+        """
+
+        :return:
+        """
+        if self.cluster_ids is None:
+            self.find_overdensities(path=path_prefix+'.png')
+        if self.n_clusters <= 1:
+            print 'Insufficient number of clusters for further cluster analysis'
+        else:
+            # further analyse selected groups of stars
+            results_xyz_vector = list([])
+            for c_id in self.cluster_ids:
+                if c_id == -1:
+                    # members with cluster id of -1 were not assigned to any of the dbscan determined clusters
+                    continue
+                idx_members = self.cluster_labels == c_id
+                # analyse physical parameters (metalicity) of the selected cluster members
+                mh = self.input_data['M_H'][idx_members]
+                mh_range = np.nanmax(mh) - np.nanmin(mh)
+                mh_std = np.nanstd(mh)
+                if mh_std < 0.25:
+                    # possible homogeneous cluster with uniform metalicity
+                    fig, ax = plt.subplots(2, 2)
+                    ax[0, 0].hist(mh, bins=30, range=[-2, 1])
+                    ax[0, 0].set_title('Metalicity')
+                    ax[0, 1].hist(self.xyz_vel[:, 0][idx_members], bins=30, range=[xyz_stream[0]-7, xyz_stream[0]+7])
+                    ax[0, 1].set_title('X velocity')
+                    ax[1, 0].hist(self.xyz_vel[:, 1][idx_members], bins=30, range=[xyz_stream[1]-7, xyz_stream[1]+7])
+                    ax[1, 0].set_title('Y velocity')
+                    ax[1, 1].hist(self.xyz_vel[:, 2][idx_members], bins=30, range=[xyz_stream[2]-7, xyz_stream[2]+7])
+                    ax[1, 1].set_title('Z velocity')
+                    plt.savefig(path_prefix+'_{:02.0f}.png'.format(c_id), dpi=250)
+                    plt.close()
+                    results_xyz_vector.append(np.nanmedian(self.xyz_vel[idx_members], axis=0))
+            return results_xyz_vector
