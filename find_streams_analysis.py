@@ -1,9 +1,13 @@
+import imp
 import astropy.units as u
 import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
+
+imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
+from veltrans import *
 
 
 class STREAM:
@@ -37,6 +41,9 @@ class STREAM:
             self.xyz_vel = xyz_vel
         else:
             self.xyz_vel = None
+        # store results of monte carlo simulation
+        self.xyz_vel_MC = None
+        self.data_MC = None
         # clusters analysis
         self.cluster_labels = None
         self.cluster_ids = None
@@ -84,6 +91,15 @@ class STREAM:
                                        np.power(self.cartesian_rotated.y - stream_center_y, 2)))
         stream_length = np.max(self.cartesian_rotated.z) - np.min(self.cartesian_rotated.z)
         return [stream_center_x, stream_center_y, stream_radius, stream_length]
+
+    def monte_carlo_xyz_velocities(self, samples=10, distribution='uniform'):
+        """
+
+        :param samples:
+        :param distribution:
+        :return:
+        """
+        # create new dataset based on original data considering measurement errors using monte carlo approach
 
     def stream_show(self, path=None, view_pos=None):
         """
@@ -220,7 +236,10 @@ class STREAM:
                 mh_std = np.nanstd(mh)
                 if mh_std < 0.25:
                     # possible homogeneous cluster with uniform metalicity
+                    xyz_vel_median = np.nanmedian(self.xyz_vel[idx_members], axis=0)
+                    results_xyz_vector.append(xyz_vel_median)
                     fig, ax = plt.subplots(2, 2)
+                    fig.suptitle('Median values X:{:3.2f}  Y:{:3.2f}  Z:{:3.2f}'.format(xyz_vel_median[0], xyz_vel_median[1], xyz_vel_median[2]))
                     ax[0, 0].hist(mh, bins=30, range=[-2, 1])
                     ax[0, 0].set_title('Metalicity')
                     ax[0, 1].hist(self.xyz_vel[:, 0][idx_members], bins=30, range=[xyz_stream[0]-7, xyz_stream[0]+7])
@@ -231,5 +250,4 @@ class STREAM:
                     ax[1, 1].set_title('Z velocity')
                     plt.savefig(path_prefix+'_{:02.0f}.png'.format(c_id), dpi=250)
                     plt.close()
-                    results_xyz_vector.append(np.nanmedian(self.xyz_vel[idx_members], axis=0))
             return results_xyz_vector

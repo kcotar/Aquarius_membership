@@ -6,6 +6,7 @@ from astropy.table import Table, join, Column, vstack, unique
 from velocity_transformations import *
 from find_streams_plots import *
 from find_streams_analysis import *
+from values_matching import *
 
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir
@@ -96,16 +97,18 @@ else:
     rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
     # do some column name housekeeping for consistent naming between the data sets
     galah_param['rv_guess'].name = 'RV'
+    galah_param['e_rv_guess'].name = 'RV_error'
     galah_param['feh_guess'].name = 'M_H'
     rave_param['HRV'].name = 'RV'
-    rave_param['parallax'].name = 'parallax_photo'
+    rave_param['eHRV'].name = 'RV_error'
+    rave_param['parallax'].name = 'parallax_binney'
     rave_param['Met_N_K'].name = 'M_H'
     rave_tgas['ra'].name = 'ra_gaia'
     rave_tgas['dec'].name = 'dec_gaia'
 
     # join datasets
     print 'Joining RAVE and GALAH sets into one'
-    use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'parallax', 'pmra', 'pmdec', 'pmdec_error', 'pmra_error', 'parallax_error', 'M_H']
+    use_columns = ['ra_gaia', 'dec_gaia', 'RV', 'RV_error', 'parallax', 'parallax_error', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error', 'M_H']
     use_columns_galah = ['sobject_id', 'galah_id']
     use_columns_galah.extend(use_columns)
     use_columns_rave = ['RAVE_OBS_ID', 'RAVEID']
@@ -136,14 +139,20 @@ tgas_data = tgas_data.filled()
 # remove duplicates
 tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
 
-print 'Final number of observations: '+str(len(tgas_data))
+print 'Final number of unique objects: '+str(len(tgas_data))
 
 # --------------------------------------------------------
 # ---------------- Compute different galactic velocities - cartesian and cylindrical
 # --------------------------------------------------------
+# add systematic errors as described in
+# Gaia DR1 - Lindegren 2016 and Gaia DR1: Open clusters astrometry - Gaia Collaboration 2017
+
 # convert parallax to parsec distance
 star_parsec = (tgas_data['parallax'].data * u.mas).to(u.parsec, equivalencies=u.parallax()) # use of .data to remove units as they are not handled correctly by astropy
 tgas_data.add_column(Column(star_parsec, name='parsec'))
+# convert parallax error to parsec error
+star_parsec_error = (tgas_data['parallax_error'].data * u.mas).to(u.parsec, equivalencies=u.parallax())
+tgas_data.add_column(Column(star_parsec, name='parsec_error'))
 
 # cylindrical uvw velocity computation
 u, v, w = gal_uvw(np.array(tgas_data['ra_gaia']), np.array(tgas_data['dec_gaia']),
@@ -201,7 +210,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = [[90], [0], [50], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None #[[90], [-5], [50], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -226,7 +235,7 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number stream combinations that will be evaluated: '+str(n_combinations)
 
-move_to_dir('Streams_investigation_lower-thr_2')
+move_to_dir('Streams_investigation_lower-thr_M44')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -235,36 +244,41 @@ for i_stream in range(n_combinations):
 
     # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
     v_xyz_stream = compute_xyz_vel(np.deg2rad(ra_stream), np.deg2rad(dec_stream), rv_stream)
-    print v_xyz_stream
 
     # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
-    rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']),
-                                     np.deg2rad(tgas_data['dec_gaia']),
+    rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
                                      v_xyz_stream)
-    pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']),
-                                         np.deg2rad(tgas_data['dec_gaia']),
-                                         tgas_data['parsec'],
-                                         v_xyz_stream)
-    pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']),
-                                           np.deg2rad(tgas_data['dec_gaia']),
-                                           tgas_data['parsec'],
-                                           v_xyz_stream)
+
+    pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                         tgas_data['parsec'], v_xyz_stream)
+    pmra_error_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                               tgas_data['parsec_error'], v_xyz_stream)
+
+    pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                           tgas_data['parsec'], v_xyz_stream)
+    pmdec_error_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                                tgas_data['parsec_error'], v_xyz_stream)
 
     # compute predicted distances based on measured pmra and pmdec and assumed velocities of observed stream
-    parsec_pmra = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']),
-                                        np.deg2rad(tgas_data['dec_gaia']),
-                                        tgas_data['pmra'],
-                                        v_xyz_stream)
-    parsec_pmdec = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']),
-                                          np.deg2rad(tgas_data['dec_gaia']),
-                                          tgas_data['pmdec'],
-                                          v_xyz_stream)
+    parsec_pmra = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                        tgas_data['pmra'], v_xyz_stream)
+    parsec_pmdec = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                          tgas_data['pmdec'], v_xyz_stream)
 
-    # # filter data based on predefined search criteria
-    idx_possible = np.logical_and(np.logical_and(np.abs((pmra_stream_predicted - tgas_data['pmra'])/pmra_stream_predicted) <= pmra_thr/100.,
-                                                 np.abs((pmdec_stream_predicted - tgas_data['pmdec'])/pmdec_stream_predicted) <= pmdec_thr/100.),
-                                  np.logical_and(np.abs((rv_stream_predicted - tgas_data['RV'])/rv_stream_predicted) <= rv_thr/100.,
-                                                 tgas_data['parsec'].data > 0.))
+    # filter data based on measurement errors
+    idx_possible = np.logical_and(match_two_1d_vectors_within_uncertainties(tgas_data['pmra'], tgas_data['pmra_error'],
+                                                                            pmra_stream_predicted, pmra_error_stream_predicted),
+                                  match_two_1d_vectors_within_uncertainties(tgas_data['pmdec'], tgas_data['pmdec_error'],
+                                                                            pmdec_stream_predicted, pmdec_error_stream_predicted))
+    idx_possible = np.logical_and(match_two_1d_vectors_within_uncertainties(tgas_data['RV'], tgas_data['RV_error'],
+                                                                            rv_stream_predicted, 0.),
+                                  idx_possible)
+
+    # # # filter data based on predefined search criteria
+    # idx_possible = np.logical_and(np.logical_and(np.abs((pmra_stream_predicted - tgas_data['pmra'])/pmra_stream_predicted) <= pmra_thr/100.,
+    #                                              np.abs((pmdec_stream_predicted - tgas_data['pmdec'])/pmdec_stream_predicted) <= pmdec_thr/100.),
+    #                               np.logical_and(np.abs((rv_stream_predicted - tgas_data['RV'])/rv_stream_predicted) <= rv_thr/100.,
+    #                                              tgas_data['parsec'].data > 0.))
 
     # # filter data based on their observed and calculated distance
     # parsec_mean = (parsec_pmra + parsec_pmdec + tgas_data['parsec'])/3.
@@ -278,6 +292,7 @@ for i_stream in range(n_combinations):
 
     n_possible = np.sum(idx_possible)
     print ' Possible members: ' + str(n_possible) + ' for stream from ra={:3.1f} dec={:2.1f} with rv velocity of {:3.1f}'.format(ra_stream, dec_stream, rv_stream)
+
     if n_possible < 20:
         continue
     else:
@@ -315,7 +330,6 @@ for i_stream in range(n_combinations):
         # d.stream_show(view_pos=stream_radiant, path='stream'+suffix+'_radiant-3D.png')
         d.find_overdensities(path='stream'+suffix+'_radiant_dbscan.png')
         analysis_res = d.analyse_overdensities(xyz_stream=v_xyz_stream, path_prefix='stream' + suffix + '_radiant_dbscan')
-        print analysis_res
         # d.plot_velocities(uvw=True, xyz=False, path='stream'+suffix+'_vel_uvw.png')
         d.plot_velocities(uvw=False, xyz=True, xyz_stream=v_xyz_stream, path='stream'+suffix+'_vel_xyz.png')
 

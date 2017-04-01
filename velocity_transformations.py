@@ -5,6 +5,8 @@ import numpy as np
 # ---------------- Constants -----------------------------
 # --------------------------------------------------------
 F = 212.  # (mas/yr)*pc/(km/s)
+# OR maybe even more correct value of this constant
+F = 1./4.74047*1e3
 
 
 # --------------------------------------------------------
@@ -44,7 +46,7 @@ def compute_pmra(ra, dec, dist, vel):
 
     :param ra:
     :param dec:
-    :param dist:
+    :param dist: in parsecs
     :param vel:
     :return:
     """
@@ -56,14 +58,14 @@ def compute_pmdec(ra, dec, dist, vel):
 
     :param ra:
     :param dec:
-    :param dist:
+    :param dist: in parsecs
     :param vel:
     :return:
     """
     return F / dist * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
 
 
-def compute_distance_pmra(ra, dec, pmra, vel):
+def compute_distance_pmra(ra, dec, pmra, vel, parallax=False):
     """
 
     :param ra:
@@ -72,10 +74,16 @@ def compute_distance_pmra(ra, dec, pmra, vel):
     :param pmra:
     :return:
     """
-    return F / pmra * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+    # compute distance in parsecs
+    dist = F / pmra * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+    if parallax:
+        # transform to parallax value if requested
+        return 1./dist*1e3
+    else:
+        return dist
 
 
-def compute_distance_pmdec(ra, dec, pmdec, vel):
+def compute_distance_pmdec(ra, dec, pmdec, vel, parallax=False):
     """
 
     :param ra:
@@ -84,4 +92,10 @@ def compute_distance_pmdec(ra, dec, pmdec, vel):
     :param pmra:
     :return:
     """
-    return F / pmdec * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+    # compute distance in parsecs
+    dist = F / pmdec * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+    if parallax:
+        # transform to parallax value if requested
+        return 1./dist*1e3
+    else:
+        return dist
