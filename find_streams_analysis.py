@@ -3,6 +3,7 @@ import astropy.units as u
 import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
+from astropy.table import Table, vstack
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
 
@@ -44,12 +45,14 @@ class STREAM:
         # store results of monte carlo simulation
         self.xyz_vel_MC = None
         self.data_MC = None
+        self.cartesian_MC = None
+        self.cartesian_rotated_MC = None
         # clusters analysis
         self.cluster_labels = None
         self.cluster_ids = None
         self.n_clusters = None
 
-    def _rotate_coordinate_system(self):
+    def _rotate_coordinate_system(self, MC=False):
         """
         Rotate coordinate system about the x/y/z axis so that the rotation axis (radiant axis) lies in one of the
         axises of the new coordinate system.
@@ -75,10 +78,17 @@ class STREAM:
         # create rotation matrix
         rot_matrix = x_rot_matrix.dot(y_rot_matrix)
         # preform coordinate rotation
-        old_coordinates = np.transpose(np.vstack((self.cartesian.x, self.cartesian.y, self.cartesian.z)))
+        if MC:
+            old_coordinates = np.transpose(np.vstack((self.cartesian_MC.x, self.cartesian_MC.y, self.cartesian_MC.z)))
+        else:
+            old_coordinates = np.transpose(np.vstack((self.cartesian.x, self.cartesian.y, self.cartesian.z)))
         new_coordinates = old_coordinates.value.dot(rot_matrix)
-        self.cartesian_rotated = coord.SkyCoord(x=new_coordinates[:, 0]*u.pc, y=new_coordinates[:, 1]*u.pc, z=new_coordinates[:, 2]*u.pc,
+        new_coordinates_cartesian = coord.SkyCoord(x=new_coordinates[:, 0]*u.pc, y=new_coordinates[:, 1]*u.pc, z=new_coordinates[:, 2]*u.pc,
                                                 frame='icrs', representation='cartesian').cartesian
+        if MC:
+            self.cartesian_rotated_MC = new_coordinates_cartesian
+        else:
+            self.cartesian_rotated = new_coordinates_cartesian
 
     def _determine_stream_param(self, method='mass'):
         if method is 'mass':
@@ -92,26 +102,77 @@ class STREAM:
         stream_length = np.max(self.cartesian_rotated.z) - np.min(self.cartesian_rotated.z)
         return [stream_center_x, stream_center_y, stream_radius, stream_length]
 
-    def monte_carlo_xyz_velocities(self, samples=10, distribution='uniform'):
+    def monte_carlo_simulation(self, samples=10, distribution='uniform'):
         """
 
         :param samples:
         :param distribution:
         :return:
         """
+        # remove possible results from previous mc simulation
+        self.data_MC = None
         # create new dataset based on original data considering measurement errors using monte carlo approach
+        n_input_rows = len(self.input_data)
+        n_MC_rows = n_input_rows * samples
+        cols_MC = ['RV', 'parallax', 'pmra', 'pmdec']
+        cols_const = ['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
+        n_cols_MC = len(cols_MC)
+        # create multiple instances of every row
+        print 'Creating random observations from given error values'
+        for i_r in range(n_input_rows):
+            print ' Working on row '+str(i_r)+' out of '+str(n_input_rows)+'.'
+            temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
+                               names=np.array([cols_const, cols_MC]).flatten(),
+                               dtype=['i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
+            data_row = self.input_data[i_r]
+            for i_c in range(n_cols_MC):
+                col = cols_MC[i_c]
+                # fill temp table with randomly generated values
+                if distribution is 'uniform':
+                    temp_table[col] = np.random.uniform(data_row[col] - data_row[col + '_error'],
+                                                        data_row[col] + data_row[col + '_error'], samples)
+                elif distribution in 'normal':
+                    temp_table[col] = np.random.normal(data_row[col], data_row[col + '_error'], samples)
+            # fill temp table with values that are constant for every MC value
+            for col in cols_const:
+                temp_table[col] = data_row[col]
+            # add created values to the final MC database
+            if self.data_MC is None:
+                self.data_MC = Table(temp_table)
+            else:
+                self.data_MC = vstack([self.data_MC, temp_table], join_type='inner')
+        # limit negative parallax values
+        idx_bad = self.data_MC['parallax'] <= 0
+        n_bad = np.sum(idx_bad)
+        if n_bad > 0:
+            print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
+            self.data_MC = self.data_MC[np.logical_not(idx_bad)]
+        # compote cartesian coordinates od simulated data
+        self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * u.deg,
+                                           dec=self.data_MC['dec_gaia'] * u.deg,
+                                           distance=1./self.data_MC['parallax']*1e3 * u.pc).cartesian
+        # compute xyz velocities
+        xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
+                                     np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
+                                     np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
+        self.xyz_vel_MC = np.transpose(xyz_vel)
 
-    def stream_show(self, path=None, view_pos=None):
+
+    def stream_show(self, path=None, view_pos=None, MC=False):
         """
 
         :param path:
         :param view_pos:
         :return:
         """
+        if MC:
+            plot_dataset = self.cartesian_MC
+        else:
+            plot_dataset = self.cartesian
         plot_lim = (-2000, 2000)
         fig = plt.subplot(111, projection='3d')
         fig.scatter(0, 0, 0, c='black', marker='*', s=20)
-        fig.scatter(self.cartesian.x, self.cartesian.y, self.cartesian.z,
+        fig.scatter(plot_dataset.x, plot_dataset.y, plot_dataset.z,
                     c='blue', depthshade=False, alpha=0.35, s=20, lw=0)
         # add line that connects point of radiant and anti-radiant
         if self.radiant is not None:
@@ -129,10 +190,13 @@ class STREAM:
             plt.savefig(path)
         plt.close()
 
-    def plot_velocities(self, uvw=False, xyz=False, uvw_stream=None, xyz_stream=None, path='vel.png'):
-        plot_lim = (-20, 20)
+    def plot_velocities(self, uvw=False, xyz=False, uvw_stream=None, xyz_stream=None, path='vel.png', MC=False):
+        plot_range = 50
         if xyz and self.xyz_vel is not None:
-            plot_data = self.xyz_vel
+            if MC:
+                plot_data = self.xyz_vel_MC
+            else:
+                plot_data = self.xyz_vel
             labels = ['X', 'Y', 'Z']
             stream_center = xyz_stream
         elif uvw and self.uvw_vel is not None:
@@ -149,44 +213,53 @@ class STREAM:
             i_y = plot_comb[i_c][1]
             if stream_center is not None:
                 ax[fig_pos].scatter(stream_center[i_x], stream_center[i_y], lw=0, c='black', s=10, marker='*')
-            ax[fig_pos].scatter(plot_data[:,i_x], plot_data[:,i_y], lw=0, c='blue', s=2, alpha=0.35)
-            ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y])#, xlim=plot_lim, ylim=plot_lim)
+            ax[fig_pos].scatter(plot_data[:,i_x], plot_data[:,i_y], lw=0, c='blue', s=2, alpha=0.2)
+            ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y],
+                            xlim=[stream_center[i_x]-plot_range, stream_center[i_x]+plot_range],
+                            ylim=[stream_center[i_y]-plot_range, stream_center[i_y]+plot_range])
         plt.savefig(path, dpi=250)
         plt.close()
 
-    def estimate_stream_dimensions(self, path=None, color=None):
+    def estimate_stream_dimensions(self, path=None, color=None, MC=False):
         """
 
         :param path:
         :param color:
         :return:
         """
-        plot_lim = (-2000, 2000)
-        # first transform coordinate system in that way that radian lies on a z axis
-        if self.cartesian_rotated is None:
-            self._rotate_coordinate_system()
+        if MC:
+            # first transform coordinate system in that way that radian lies on a z axis
+            if self.cartesian_rotated_MC is None:
+                self._rotate_coordinate_system(MC=True)
+            plot_data = self.cartesian_rotated_MC
+        else:
+            # first transform coordinate system in that way that radian lies on a z axis
+            if self.cartesian_rotated is None:
+                self._rotate_coordinate_system()
+            plot_data = self.cartesian_rotated
+        plot_lim = (-1000, 1000)
         # compute stream parameters
-        self.stream_params = self._determine_stream_param(method='mass')
+        # self.stream_params = self._determine_stream_param(method='mass')
         # plot results
-        plt.scatter(self.stream_params[0], self.stream_params[1], c='black', marker='+', s=15)
-        ax = plt.gca()
-        c1 = plt.Circle((self.stream_params[0].value, self.stream_params[1].value), self.stream_params[2].value, color='0.85', fill=False)
-        ax.add_artist(c1)
+        # plt.scatter(self.stream_params[0], self.stream_params[1], c='black', marker='+', s=15)
+        # ax = plt.gca()
+        # c1 = plt.Circle((self.stream_params[0].value, self.stream_params[1].value), self.stream_params[2].value, color='0.85', fill=False)
+        # ax.add_artist(c1)
         # plot stream in xy plane
         plt.scatter(0, 0, c='black', marker='*', s=15)
         if color is None:
-            plt.scatter(self.cartesian_rotated.x, self.cartesian_rotated.y,
-                        c='blue', alpha=0.35, s=15, lw=0)
+            plt.scatter(plot_data.x, plot_data.y,
+                        c='blue', alpha=0.1, s=5, lw=0)
         else:
-            plt.scatter(self.cartesian_rotated.x, self.cartesian_rotated.y,
+            plt.scatter(plot_data.x, plot_data.y,
                         c=color, s=15, lw=0, cmap='jet')
             plt.colorbar()
-        plt.axis('equal')
+        #plt.axis('equal')
         plt.xlim(plot_lim)
         plt.ylim(plot_lim)
         plt.xlabel('X\' [pc]')
         plt.ylabel('Y\' [pc]')
-        plt.title('radius {:4.0f}   length {:4.0f}'.format(self.stream_params[2], self.stream_params[3]))
+        # plt.title('radius {:4.0f}   length {:4.0f}'.format(self.stream_params[2], self.stream_params[3]))
         plt.tight_layout()
         if path is not None:
             plt.savefig(path, dpi=250)
