@@ -16,7 +16,7 @@ class TkWindow:
         # stream parameters
         self.ra_stream = 0.
         self.dec_stream = 0.
-        self.rv_stream = 0.
+        self.rv_stream = 25.
 
         # window
         self.main_window = tk.Tk()
@@ -59,7 +59,7 @@ class TkWindow:
         # show values
         self.update_values()
         # large plot button
-        plot_b = tk.Button(self.main_window, text='Plot selected', command=lambda: self.plot_selected())
+        plot_b = tk.Button(self.main_window, text='Begin stream\n\nanalysis', command=lambda: self.plot_selected())
         plot_b.place(x=200, y=35, width=120, height=80)
 
     def ra_set(self, sign='+'):

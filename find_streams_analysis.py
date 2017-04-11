@@ -1,5 +1,5 @@
 import imp
-import astropy.units as u
+import astropy.units as un
 import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,36 +12,31 @@ from veltrans import *
 
 
 class STREAM:
-    def __init__(self, data, uvw_vel=None, xyz_vel=None, radiant=None):
+    def __init__(self, data, radiant=None):
         """
 
         :param data:
-        :param uvw_vel:
-        :param xyz_vel:
         :param radiant:
         """
         self.input_data = data
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = coord.SkyCoord(ra=data['ra_gaia']*u.deg,
-                                        dec=data['dec_gaia']*u.deg,
-                                        distance=data['parsec']*u.pc).cartesian
+        self.cartesian = coord.SkyCoord(ra=data['ra_gaia']*un.deg,
+                                        dec=data['dec_gaia']*un.deg,
+                                        distance=data['parsec']*un.pc).cartesian
         if self.radiant is not None:
-            self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*u.deg,
-                                                    dec=radiant[1]*u.deg,
+            self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
+                                                    dec=radiant[1]*un.deg,
                                                     distance=3000).cartesian
         # prepare labels that will be used later on
         self.cartesian_rotated = None
         self.stream_params = None
         # store galactic and cartesian velocities
-        if uvw_vel is not None:
-            self.uvw_vel = uvw_vel
-        else:
-            self.uvw_vel = None
-        if xyz_vel is not None:
-            self.xyz_vel = xyz_vel
-        else:
-            self.xyz_vel = None
+        self.uvw_vel = None
+        xyz_vel = motion_to_cartesic(np.array(self.input_data['ra_gaia']), np.array(self.input_data['dec_gaia']),
+                                     np.array(self.input_data['pmra']), np.array(self.input_data['pmdec']),
+                                     np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
+        self.xyz_vel = np.transpose(xyz_vel)
         # store results of monte carlo simulation
         self.xyz_vel_MC = None
         self.data_MC = None
@@ -83,7 +78,7 @@ class STREAM:
         else:
             old_coordinates = np.transpose(np.vstack((self.cartesian.x, self.cartesian.y, self.cartesian.z)))
         new_coordinates = old_coordinates.value.dot(rot_matrix)
-        new_coordinates_cartesian = coord.SkyCoord(x=new_coordinates[:, 0]*u.pc, y=new_coordinates[:, 1]*u.pc, z=new_coordinates[:, 2]*u.pc,
+        new_coordinates_cartesian = coord.SkyCoord(x=new_coordinates[:, 0]*un.pc, y=new_coordinates[:, 1]*un.pc, z=new_coordinates[:, 2]*un.pc,
                                                 frame='icrs', representation='cartesian').cartesian
         if MC:
             self.cartesian_rotated_MC = new_coordinates_cartesian
@@ -148,9 +143,9 @@ class STREAM:
             print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
             self.data_MC = self.data_MC[np.logical_not(idx_bad)]
         # compote cartesian coordinates od simulated data
-        self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * u.deg,
-                                           dec=self.data_MC['dec_gaia'] * u.deg,
-                                           distance=1./self.data_MC['parallax']*1e3 * u.pc).cartesian
+        self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
+                                           dec=self.data_MC['dec_gaia'] * un.deg,
+                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).cartesian
         # compute xyz velocities
         xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
                                      np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
