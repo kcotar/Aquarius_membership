@@ -1,5 +1,4 @@
 import numpy as np
-import uncertainties.unumpy as unumpy
 
 from astropy.table import Table, unique, Column
 from tk_window_class import *
@@ -13,29 +12,25 @@ tgas_data = Table.read(out_file_fits)
 idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far away or problems in data reduction
 idx_ok = np.logical_and(idx_ok,
                         np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
+# remove observations with large RV uncertainties
+idx_ok = np.logical_and(idx_ok,
+                        tgas_data['RV_error'] < 25.)
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
-print 'Number of observations: '+str(len(tgas_data))
+print 'Number of valid observations: '+str(len(tgas_data))
 
 # remove problems with masks
 tgas_data = tgas_data.filled()
-
 # remove duplicates
 tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
-
 # convert parallax to parsec distance
 tgas_data.add_column(Column(1e3/tgas_data['parallax'].data, name='parsec'))
 # add systematic error to the parallax uncertainties as suggested for the TGAS dataset
 tgas_data['parallax_error'] = np.sqrt(tgas_data['parallax_error'].data**2 + 0.3**2)
 # limit data by parsec
-tgas_data = tgas_data[tgas_data['parsec']<250]
-# define parallax values with uncertainties using uncertainties library
-parallax_u = unumpy.uarray(tgas_data['parallax'], tgas_data['parallax_error'])
-parsec_u = 1e3/parallax_u
-# define other parameters with uncertainties
-pmra_u = unumpy.uarray(tgas_data['pmra'], tgas_data['pmra_error'])
-pmdec_u = unumpy.uarray(tgas_data['pmdec'], tgas_data['pmdec_error'])
-rv_u = unumpy.uarray(tgas_data['RV'], tgas_data['RV_error'])
+tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 250, tgas_data['parsec'] < 250)]
+print 'Number of points after distance limits: ' + str(len(tgas_data))
+
 
 window = TkWindow()
 window.add_data(tgas_data)

@@ -128,6 +128,8 @@ idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far a
 # validate data
 idx_ok = np.logical_and(idx_ok,
                         np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
+idx_ok = np.logical_and(idx_ok,
+                        tgas_data['RV_error']<25.)
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
 print 'Number of observations: '+str(len(tgas_data))
@@ -151,7 +153,7 @@ tgas_data.add_column(Column(1e3/tgas_data['parallax'].data, name='parsec'))
 # add systematic error to the parallax uncertainties as suggested for the TGAS dataset
 tgas_data['parallax_error'] = np.sqrt(tgas_data['parallax_error'].data**2 + 0.3**2)
 # limit data by parsec
-tgas_data = tgas_data[tgas_data['parsec']<250]
+tgas_data = tgas_data[np.logical_and(tgas_data['parsec']<500, tgas_data['parsec']>0)]
 # define parallax values with uncertainties using uncertainties library
 parallax_u = unumpy.uarray(tgas_data['parallax'], tgas_data['parallax_error'])
 parsec_u = 1e3/parallax_u
@@ -213,7 +215,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = [[90], [-5], [50], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None  # [[90], [-5], [10], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -238,7 +240,7 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-move_to_dir('Streams_investigation_new_new_old')
+move_to_dir('Streams_investigation_new_new_sigma')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -256,21 +258,22 @@ for i_stream in range(n_combinations):
                                            parsec_u, v_xyz_stream)
     pmdec_stream_predicted_u = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
                                              parsec_u, v_xyz_stream)
-    parsec_pmra_u = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-                                          pmra_u, v_xyz_stream)
-    parsec_pmdec_u = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-                                            pmdec_u, v_xyz_stream)
+    # parsec_pmra_u = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+    #                                       pmra_u, v_xyz_stream)
+    # parsec_pmdec_u = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+    #                                         pmdec_u, v_xyz_stream)
 
     # option 1 - match proper motion values in the same sense as described in the Gaia open clusters paper
-    idx_match = np.logical_and(match_proper_motion_values(pmra_stream_predicted_u, pmra_u, dispersion=0., prob_thr=0.2),
-                               match_proper_motion_values(pmdec_stream_predicted_u, pmdec_u, dispersion=0., prob_thr=0.01))
+    idx_match = np.logical_and(match_proper_motion_values(pmra_stream_predicted_u, pmra_u, dispersion=0.,
+                                                          sigma=3, prob_thr=None),
+                               match_proper_motion_values(pmdec_stream_predicted_u, pmdec_u, dispersion=0.,
+                                                          sigma=3, prob_thr=None))
 
     # option 2 - based on calculated and measured parallax values by Zwitter
     # idx_match = match_parsec_values(parsec_u, parsec_pmra_u, parsec_pmdec_u, prob_thr=2.)
 
     # selection based on RV observation
-    rv_prob_thr = 0.2
-    idx_rv_match = np.exp(-1.*((tgas_data['RV'] - rv_stream_predicted)**2) / (2.*tgas_data['RV_error']**2)) > rv_prob_thr
+    idx_rv_match = match_rv_values(rv_stream_predicted, rv_u, sigma=1., prob_thr=None)
 
     # first final selection
     idx_possible = np.logical_and(idx_match, idx_rv_match)

@@ -32,7 +32,24 @@ def parsec_limits(parallax, parallax_error):
     return min_parsec, max_parsec
 
 
-def match_proper_motion_values(model, observation, dispersion=0., prob_thr=0.8):
+def match_rv_values(model, observation, prob_thr=None, sigma=None):
+    """
+
+    :param model:
+    :param observation:
+    :param prob_thr:
+    :param sigma:
+    :return:
+    """
+    if prob_thr is not None:
+        value_prob = np.exp(-1. * ((unumpy.nominal_values(observation) - model) ** 2) / (2. * unumpy.std_devs(observation) ** 2))
+        return value_prob > prob_thr
+    elif sigma is not None:
+        value_diff = np.abs(unumpy.nominal_values(observation) - model)
+        return value_diff < (unumpy.std_devs(observation) * sigma)
+
+
+def match_proper_motion_values(model, observation, dispersion=0., prob_thr=None, sigma=None):
     """
 
     :param model:
@@ -42,8 +59,12 @@ def match_proper_motion_values(model, observation, dispersion=0., prob_thr=0.8):
     :return:
     """
     final_std = np.sqrt(unumpy.std_devs(model)**2 + unumpy.std_devs(observation)**2 + dispersion**2)
-    value_prob = np.exp(-1. * ((unumpy.nominal_values(model) - unumpy.nominal_values(observation)) ** 2) / (2. * final_std ** 2))
-    return value_prob > prob_thr
+    if prob_thr is not None:
+        value_prob = np.exp(-1. * ((unumpy.nominal_values(model) - unumpy.nominal_values(observation)) ** 2) / (2. * final_std ** 2))
+        return value_prob > prob_thr
+    elif sigma is not None:
+        value_diff = np.abs(unumpy.nominal_values(model) - unumpy.nominal_values(observation))
+        return value_diff < (final_std * sigma)
 
 
 def match_parsec_values(parsec1, parsec2, parsec3, prob_thr=-1.):
