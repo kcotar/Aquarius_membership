@@ -68,6 +68,14 @@ def match_proper_motion_values(model, observation, dispersion=0., prob_thr=None,
 
 
 def match_parsec_values(parsec1, parsec2, parsec3, prob_thr=-1.):
+    """
+
+    :param parsec1:
+    :param parsec2:
+    :param parsec3:
+    :param prob_thr:
+    :return:
+    """
     median_val = np.median(np.vstack((unumpy.nominal_values(parsec1), unumpy.nominal_values(parsec2), unumpy.nominal_values(parsec3))), axis=0)
     log_prob = 0.5*np.log(((unumpy.nominal_values(parsec1) - median_val) / unumpy.std_devs(parsec1)) ** 2 +
                           ((unumpy.nominal_values(parsec2) - median_val) / unumpy.std_devs(parsec2)) ** 2 +

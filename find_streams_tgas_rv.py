@@ -7,6 +7,7 @@ from velocity_transformations import *
 from find_streams_plots import *
 from find_streams_analysis import *
 from find_streams_selection import *
+from find_streams_analysis_functions import *
 
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir
@@ -129,7 +130,7 @@ idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far a
 idx_ok = np.logical_and(idx_ok,
                         np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
 idx_ok = np.logical_and(idx_ok,
-                        tgas_data['RV_error']<25.)
+                        tgas_data['RV_error'] < 20.)
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
 print 'Number of observations: '+str(len(tgas_data))
@@ -153,14 +154,15 @@ tgas_data.add_column(Column(1e3/tgas_data['parallax'].data, name='parsec'))
 # add systematic error to the parallax uncertainties as suggested for the TGAS dataset
 tgas_data['parallax_error'] = np.sqrt(tgas_data['parallax_error'].data**2 + 0.3**2)
 # limit data by parsec
-tgas_data = tgas_data[np.logical_and(tgas_data['parsec']<500, tgas_data['parsec']>0)]
+tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 750, tgas_data['parsec'] > 0)]
+print 'Number of points after distance limits: ' + str(len(tgas_data))
 # define parallax values with uncertainties using uncertainties library
-parallax_u = unumpy.uarray(tgas_data['parallax'], tgas_data['parallax_error'])
-parsec_u = 1e3/parallax_u
-# define other parameters with uncertainties
-pmra_u = unumpy.uarray(tgas_data['pmra'], tgas_data['pmra_error'])
-pmdec_u = unumpy.uarray(tgas_data['pmdec'], tgas_data['pmdec_error'])
-rv_u = unumpy.uarray(tgas_data['RV'], tgas_data['RV_error'])
+# parallax_u = unumpy.uarray(tgas_data['parallax'], tgas_data['parallax_error'])
+# parsec_u = 1e3/parallax_u
+# # define other parameters with uncertainties
+# pmra_u = unumpy.uarray(tgas_data['pmra'], tgas_data['pmra_error'])
+# pmdec_u = unumpy.uarray(tgas_data['pmdec'], tgas_data['pmdec_error'])
+# rv_u = unumpy.uarray(tgas_data['RV'], tgas_data['RV_error'])
 
 # TODO BEGIN - remove those calculations, should be performed on the fly in the STREAM
 # cylindrical uvw velocity computation
@@ -201,9 +203,9 @@ if TSNE_PERFORM:
 # de_stream = np.deg2rad(13.)  # delta - DEC
 
 # stream search criteria
-rv_step = 15.  # km/s, rv in the radiant of the stream
-ra_step = 10.  # deg
-dec_step = 10.  # deg
+rv_step = 5.  # km/s, rv in the radiant of the stream
+ra_step = 5.  # deg
+dec_step = 5.  # deg
 dist_step = None  # 200  # pc
 
 # results thresholds in percent from theoretical value
@@ -215,7 +217,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None  # [[90], [-5], [10], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None  # [[90], [0], [45], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -224,9 +226,9 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(10, 90, rv_step)
-    ra_range = np.arange(80, 120, ra_step)
-    dec_range = np.arange(-30, 30, dec_step)
+    rv_range = np.arange(5, 200, rv_step)
+    ra_range = np.arange(0, 360, ra_step)
+    dec_range = np.arange(-90, 90, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -240,13 +242,15 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-move_to_dir('Streams_investigation_new_new_sigma')
+parallax_MC = MC_parallax(tgas_data['parallax'], tgas_data['parallax_error'], 100)
+move_to_dir('Streams_investigation_MC-sigma_RV-sigma')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
     rv_stream = rv_combinations[i_stream]
     dist_stream = dist_combinations[i_stream]
-
+    # combine results by RV values
+    move_to_dir(str(rv_stream))
     # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
     v_xyz_stream = compute_xyz_vel(np.deg2rad(ra_stream), np.deg2rad(dec_stream), rv_stream)
 
@@ -254,40 +258,40 @@ for i_stream in range(n_combinations):
     rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
                                      v_xyz_stream)
 
-    pmra_stream_predicted_u = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-                                           parsec_u, v_xyz_stream)
-    pmdec_stream_predicted_u = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-                                             parsec_u, v_xyz_stream)
+    # pmra_stream_predicted_u = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+    #                                        parsec_u, v_xyz_stream)
+    # pmdec_stream_predicted_u = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+    #                                          parsec_u, v_xyz_stream)
     # parsec_pmra_u = compute_distance_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
     #                                       pmra_u, v_xyz_stream)
     # parsec_pmdec_u = compute_distance_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
     #                                         pmdec_u, v_xyz_stream)
 
     # option 1 - match proper motion values in the same sense as described in the Gaia open clusters paper
-    idx_match = np.logical_and(match_proper_motion_values(pmra_stream_predicted_u, pmra_u, dispersion=0.,
-                                                          sigma=3, prob_thr=None),
-                               match_proper_motion_values(pmdec_stream_predicted_u, pmdec_u, dispersion=0.,
-                                                          sigma=3, prob_thr=None))
+    # idx_match = np.logical_and(match_proper_motion_values(pmra_stream_predicted_u, pmra_u, dispersion=0.,
+    #                                                       sigma=3, prob_thr=None),
+    #                            match_proper_motion_values(pmdec_stream_predicted_u, pmdec_u, dispersion=0.,
+    #                                                       sigma=3, prob_thr=None))
 
     # option 2 - based on calculated and measured parallax values by Zwitter
     # idx_match = match_parsec_values(parsec_u, parsec_pmra_u, parsec_pmdec_u, prob_thr=2.)
 
     # selection based on RV observation
-    idx_rv_match = match_rv_values(rv_stream_predicted, rv_u, sigma=1., prob_thr=None)
+    # idx_rv_match = match_rv_values(rv_stream_predicted, rv_u, sigma=1., prob_thr=None)
 
     # first final selection
-    idx_possible = np.logical_and(idx_match, idx_rv_match)
-    pmra_stream_predicted = unumpy.nominal_values(pmra_stream_predicted_u)
-    pmdec_stream_predicted = unumpy.nominal_values(pmdec_stream_predicted_u)
+    # idx_possible = np.logical_and(idx_match, idx_rv_match)
+    # pmra_stream_predicted = unumpy.nominal_values(pmra_stream_predicted_u)
+    # pmdec_stream_predicted = unumpy.nominal_values(pmdec_stream_predicted_u)
 
 
-    # pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-    #                                      tgas_data['parsec'], v_xyz_stream)
+    pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                         tgas_data['parsec'], v_xyz_stream)
     # pmra_error_stream_predicted = np.abs(compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
     #                                            tgas_data['parsec_error'], v_xyz_stream))
     #
-    # pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-    #                                        tgas_data['parsec'], v_xyz_stream)
+    pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
+                                           tgas_data['parsec'], v_xyz_stream)
     # pmdec_error_stream_predicted = np.abs(compute_pmra(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
     #                                             tgas_data['parsec_error'], v_xyz_stream))
     #
@@ -335,6 +339,16 @@ for i_stream in range(n_combinations):
     # idx_possible = np.logical_and(idx_possible,
     #                               np.abs((rv_stream_predicted - tgas_data['RV']) / rv_stream_predicted) <= rv_thr / 100)
 
+    idx_pm_match = proper_motion_match_mc(
+        tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+        parallax_MC, v_xyz_stream, std=3., percent=50.)
+
+    # selection based on RV observation
+    idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'],
+                                           rv_stream_predicted, std=1.5)
+
+    idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+
     n_possible = np.sum(idx_possible)
     print ' Possible members: ' + str(n_possible) + ' for stream from ra={:3.1f} dec={:2.1f} with rv velocity of {:3.1f}'.format(ra_stream, dec_stream, rv_stream)
 
@@ -370,7 +384,7 @@ for i_stream in range(n_combinations):
         # --------------------------------------------------------
         # perform possible stream analysis and filter out stars that do not belong in the same cluster
         d = STREAM(tgas_data[idx_possible], radiant=stream_radiant)
-        d.monte_carlo_simulation(samples=20, distribution='uniform')
+        d.monte_carlo_simulation(samples=20, distribution='normal')
         d.estimate_stream_dimensions(path='stream'+suffix+'_radiant.png')
         d.estimate_stream_dimensions(path='stream'+suffix+'_radiant_MC.png', MC=True)
         # d.stream_show(view_pos=stream_radiant, path='stream'+suffix+'_radiant-3D.png')
@@ -380,4 +394,4 @@ for i_stream in range(n_combinations):
         # d.plot_velocities(uvw=True, xyz=False, path='stream'+suffix+'_vel_uvw.png')
         d.plot_velocities(uvw=False, xyz=True, xyz_stream=v_xyz_stream, path='stream'+suffix+'_vel_xyz.png')
         d.plot_velocities(uvw=False, xyz=True, xyz_stream=v_xyz_stream, path='stream'+suffix+'_vel_xyz_MC.png', MC=True)
-
+    os.chdir('..')

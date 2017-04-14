@@ -3,6 +3,7 @@ import astropy.units as un
 import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
+
 from astropy.table import Table, vstack
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
@@ -97,7 +98,7 @@ class STREAM:
         stream_length = np.max(self.cartesian_rotated.z) - np.min(self.cartesian_rotated.z)
         return [stream_center_x, stream_center_y, stream_radius, stream_length]
 
-    def monte_carlo_simulation(self, samples=10, distribution='uniform'):
+    def monte_carlo_simulation(self, samples=10, distribution='normal'):
         """
 
         :param samples:
@@ -115,7 +116,7 @@ class STREAM:
         # create multiple instances of every row
         print 'Creating random observations from given error values'
         for i_r in range(n_input_rows):
-            print ' Working on row '+str(i_r)+' out of '+str(n_input_rows)+'.'
+            print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
             temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
                                names=np.array([cols_const, cols_MC]).flatten(),
                                dtype=['i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
@@ -136,12 +137,13 @@ class STREAM:
                 self.data_MC = Table(temp_table)
             else:
                 self.data_MC = vstack([self.data_MC, temp_table], join_type='inner')
-        # limit negative parallax values
-        idx_bad = self.data_MC['parallax'] <= 0
-        n_bad = np.sum(idx_bad)
-        if n_bad > 0:
-            print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
-            self.data_MC = self.data_MC[np.logical_not(idx_bad)]
+        # TODO: investigate effect of negative parallax limit
+        # # limit negative parallax values
+        # idx_bad = self.data_MC['parallax'] <= 0
+        # n_bad = np.sum(idx_bad)
+        # if n_bad > 0:
+        #     print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
+        #     self.data_MC = self.data_MC[np.logical_not(idx_bad)]
         # compote cartesian coordinates od simulated data
         self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
                                            dec=self.data_MC['dec_gaia'] * un.deg,
@@ -151,7 +153,6 @@ class STREAM:
                                      np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
                                      np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
         self.xyz_vel_MC = np.transpose(xyz_vel)
-
 
     def stream_show(self, path=None, view_pos=None, MC=False):
         """
@@ -185,8 +186,8 @@ class STREAM:
             plt.savefig(path)
         plt.close()
 
-    def plot_velocities(self, uvw=False, xyz=False, uvw_stream=None, xyz_stream=None, path='vel.png', MC=False):
-        plot_range = 50
+    def plot_velocities(self, uvw=False, xyz=False, uvw_stream=None, xyz_stream=None, path='vel.png', MC=False, GUI=False):
+        plot_range = 10
         if xyz and self.xyz_vel is not None:
             if MC:
                 plot_data = self.xyz_vel_MC
@@ -201,7 +202,7 @@ class STREAM:
         # Create a plot
         plot_comb = [[0,1], [2,1], [0,2]]
         plot_pos = [[0,0], [0,1], [1,0]]
-        fig, ax = plt.subplots(2, 2)
+        fig, ax = plt.subplots(2,2)
         for i_c in range(len(plot_comb)):
             fig_pos = (plot_pos[i_c][0], plot_pos[i_c][1])
             i_x = plot_comb[i_c][0]
@@ -212,10 +213,16 @@ class STREAM:
             ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y],
                             xlim=[stream_center[i_x]-plot_range, stream_center[i_x]+plot_range],
                             ylim=[stream_center[i_y]-plot_range, stream_center[i_y]+plot_range])
-        plt.savefig(path, dpi=250)
+        fig.tight_layout()
+        if GUI:
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
         plt.close()
 
-    def estimate_stream_dimensions(self, path=None, color=None, MC=False):
+    def estimate_stream_dimensions(self, path=None, color=None, MC=False, GUI=False):
         """
 
         :param path:
@@ -232,7 +239,8 @@ class STREAM:
             if self.cartesian_rotated is None:
                 self._rotate_coordinate_system()
             plot_data = self.cartesian_rotated
-        plot_lim = (-1000, 1000)
+        plot_lim = (-600, 600)
+        fig, ax = plt.subplots(1, 1)
         # compute stream parameters
         # self.stream_params = self._determine_stream_param(method='mass')
         # plot results
@@ -241,25 +249,26 @@ class STREAM:
         # c1 = plt.Circle((self.stream_params[0].value, self.stream_params[1].value), self.stream_params[2].value, color='0.85', fill=False)
         # ax.add_artist(c1)
         # plot stream in xy plane
-        plt.scatter(0, 0, c='black', marker='*', s=15)
+        ax.scatter(0, 0, c='black', marker='*', s=15)
         if color is None:
-            plt.scatter(plot_data.x, plot_data.y,
+            ax.scatter(plot_data.x, plot_data.y,
                         c='blue', alpha=0.1, s=5, lw=0)
         else:
-            plt.scatter(plot_data.x, plot_data.y,
+            ax.scatter(plot_data.x, plot_data.y,
                         c=color, s=15, lw=0, cmap='jet')
-            plt.colorbar()
+            ax.colorbar()
         #plt.axis('equal')
-        plt.xlim(plot_lim)
-        plt.ylim(plot_lim)
-        plt.xlabel('X\' [pc]')
-        plt.ylabel('Y\' [pc]')
+        ax.set(xlim=plot_lim, ylim=plot_lim, xlabel='X\' [pc]', ylabel='Y\' [pc]')
         # plt.title('radius {:4.0f}   length {:4.0f}'.format(self.stream_params[2], self.stream_params[3]))
         plt.tight_layout()
-        if path is not None:
+        if GUI:
+            return fig
+        elif path is not None:
             plt.savefig(path, dpi=250)
-        plt.close()
+        else:
+            plt.show()
         # also return computed parameters
+        plt.close()
         return self.stream_params
 
     def find_overdensities(self, path='dbscan.png'):
