@@ -8,7 +8,7 @@ from velocity_transformations import *
 from find_streams_analysis import *
 from find_streams_selection import *
 from find_streams_analysis_functions import *
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 
 import sys
 if sys.version_info[0] < 3:
@@ -27,12 +27,14 @@ class TkWindow:
     def __init__(self, w=1350, h=1130, title=''):
         # stream parameters
         self.ra_stream = 90.
-        self.dec_stream = 5.
+        self.dec_stream = 0.
         self.rv_stream = 45.
 
         # first step analysis variables
         self.parallax_MC_n = 100
         self.parallax_MC = None
+        self.pmra_MC = None
+        self.pmdec_MC = None
         self.std_pm = 3.
         self.std_rv = 2.
         self.set_mc_match_percent = 50.
@@ -86,6 +88,13 @@ class TkWindow:
         rv_p.place(x=x_off + 100, y=3 * y_line_w + x_off, width=30, height=20)
         rv_m = tk.Button(self.main_window, text='-', command=lambda: self.rv_set(sign='-'))
         rv_m.place(x=x_off + 130, y=3 * y_line_w + x_off, width=30, height=20)
+        # method selector
+        l_method = tk.Label(self.main_window, text='Method: ')
+        l_method.place(x=x_off, y=4 * y_line_w + x_off)
+        self.method_entry = tk.StringVar(self.main_window)
+        self.method_entry.set("1")  # initial value
+        method_dd = tk.OptionMenu(self.main_window, self.method_entry, "1", "2")
+        method_dd.place(x=x_off + 60, y=4 * y_line_w + x_off, width=100, height=20)
 
         # show values
         self.update_values()
@@ -174,16 +183,26 @@ class TkWindow:
         if self.parallax_MC is None:
             # compute parallax distribution in the case that no MC was not performed yet
             print 'Computing input parallax distribution.'
-            self.parallax_MC = MC_parallax(self.input_data['parallax'], self.input_data['parallax_error'], self.parallax_MC_n)
+            self.parallax_MC = MC_values(self.input_data['parallax'], self.input_data['parallax_error'], self.parallax_MC_n)
+            self.pmra_MC = MC_values(self.input_data['pmra'], self.input_data['pmra_error'], self.parallax_MC_n)
+            self.pmdec_MC = MC_values(self.input_data['pmdec'], self.input_data['pmdec_error'], self.parallax_MC_n)
         elif len(self.parallax_MC[0]) != self.parallax_MC_n:
             # compute parallax distribution in the case that requested number of MC  samples has changed
             print 'Computing input parallax distribution as number of samples has changed.'
-            self.parallax_MC = MC_parallax(self.input_data['parallax'], self.input_data['parallax_error'], self.parallax_MC_n)
+            self.parallax_MC = MC_values(self.input_data['parallax'], self.input_data['parallax_error'], self.parallax_MC_n)
+            self.pmra_MC = MC_values(self.input_data['pmra'], self.input_data['pmra_error'], self.parallax_MC_n)
+            self.pmdec_MC = MC_values(self.input_data['pmdec'], self.input_data['pmdec_error'], self.parallax_MC_n)
 
         # start = time.time()
-        # # option 1 - match proper motion values in the same sense as described in the Gaia open clusters paper
-        idx_pm_match = proper_motion_match_mc(self.input_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-                                              self.parallax_MC, self.v_xyz_stream, std=self.std_pm, percent=self.set_mc_match_percent)
+        if self.method_entry.get() is '1':
+            # METHOD 1 - match proper motion values in the same sense as described in the Gaia open clusters paper
+            idx_pm_match = observations_match_mc(self.input_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+                                                 self.v_xyz_stream, parallax_mc=self.parallax_MC, std=self.std_pm, percent=self.set_mc_match_percent)
+        elif self.method_entry.get() is '2':
+            # METHOD 2
+            idx_pm_match = observations_match_mc(self.input_data['ra_gaia', 'dec_gaia', 'parallax', 'parallax_error'], self.v_xyz_stream,
+                                                 pmra_mc=self.pmra_MC, pmdec_mc=self.pmdec_MC, std=self.std_pm, percent=self.set_mc_match_percent)
+
         # print time.time() - start
 
         # # selection based on RV observation
@@ -218,6 +237,10 @@ class TkWindow:
         pm_fig.tight_layout()
         # add plot to canvas
         self.canvas_pm = FigureCanvasTkAgg(pm_fig, master=self.main_window)
+        tempframe = tk.Frame()
+        tempframe.place(x=10, y=140)
+        toolbar = NavigationToolbar2TkAgg(self.canvas_pm, tempframe)
+        toolbar.draw()
         self.canvas_pm._tkcanvas.place(x=10, y=140)
         self.canvas_pm.draw()
 

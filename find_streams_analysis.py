@@ -168,8 +168,12 @@ class STREAM:
         plot_lim = (-2000, 2000)
         fig = plt.subplot(111, projection='3d')
         fig.scatter(0, 0, 0, c='black', marker='*', s=20)
+        if MC:
+            alpha_use = 0.3
+        else:
+            alpha_use = 1.
         fig.scatter(plot_dataset.x, plot_dataset.y, plot_dataset.z,
-                    c='blue', depthshade=False, alpha=0.35, s=20, lw=0)
+                    c='blue', depthshade=False, alpha=alpha_use, s=20, lw=0)
         # add line that connects point of radiant and anti-radiant
         if self.radiant is not None:
             # compute the cartesian coordinates of both points
@@ -207,9 +211,13 @@ class STREAM:
             fig_pos = (plot_pos[i_c][0], plot_pos[i_c][1])
             i_x = plot_comb[i_c][0]
             i_y = plot_comb[i_c][1]
+            if MC:
+                alpha_use = 0.2
+            else:
+                alpha_use = 1.
             if stream_center is not None:
                 ax[fig_pos].scatter(stream_center[i_x], stream_center[i_y], lw=0, c='black', s=10, marker='*')
-            ax[fig_pos].scatter(plot_data[:,i_x], plot_data[:,i_y], lw=0, c='blue', s=2, alpha=0.2)
+            ax[fig_pos].scatter(plot_data[:,i_x], plot_data[:,i_y], lw=0, c='blue', s=2, alpha=alpha_use)
             ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y],
                             xlim=[stream_center[i_x]-plot_range, stream_center[i_x]+plot_range],
                             ylim=[stream_center[i_y]-plot_range, stream_center[i_y]+plot_range])
@@ -249,10 +257,14 @@ class STREAM:
         # c1 = plt.Circle((self.stream_params[0].value, self.stream_params[1].value), self.stream_params[2].value, color='0.85', fill=False)
         # ax.add_artist(c1)
         # plot stream in xy plane
+        if MC:
+            alpha_use = 0.2
+        else:
+            alpha_use = 1.
         ax.scatter(0, 0, c='black', marker='*', s=15)
         if color is None:
             ax.scatter(plot_data.x, plot_data.y,
-                        c='blue', alpha=0.1, s=5, lw=0)
+                        c='blue', alpha=alpha_use, s=5, lw=0)
         else:
             ax.scatter(plot_data.x, plot_data.y,
                         c=color, s=15, lw=0, cmap='jet')
