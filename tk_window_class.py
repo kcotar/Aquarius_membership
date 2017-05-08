@@ -9,6 +9,7 @@ from find_streams_analysis import *
 from find_streams_selection import *
 from find_streams_analysis_functions import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from sklearn.neighbors import KernelDensity
 
 import sys
 if sys.version_info[0] < 3:
@@ -44,6 +45,10 @@ class TkWindow:
         self.xyz_mc = 0
         self.xyz_control_visible = False
 
+        # third step analysis variables
+        self.density_control_visible = False
+        self.den_w = 20
+
         # window
         self.main_window = tk.Tk()
         self.main_window.title(title)
@@ -55,6 +60,7 @@ class TkWindow:
         self.canvas_rv = None
         self.canvas_vel3d = None
         self.canvas_velxyz = None
+        self.canvas_density = None
 
         # create first input column
         x_off = 5
@@ -125,6 +131,12 @@ class TkWindow:
         self.xyz_mc_entry.insert(0, str(self.xyz_mc))
         if reanalyse:
             self.analysis_second_step_plots()
+
+    def update_values_density(self, reanalyse=False):
+        self.den_w_entry.delete(0, tk.END)
+        self.den_w_entry.insert(0, str(self.den_w))
+        if reanalyse:
+            self.analysis_third_step()
 
     def analysis_first_step(self):
         # add selection control buttons:
@@ -267,7 +279,7 @@ class TkWindow:
             y_line_w = 30
             l_title = tk.Label(self.main_window, text='XYZ plane parameters:')
             l_title.place(x=x_off, y=5)
-            # pm std buttons
+            # mc buttons
             l_mc = tk.Label(self.main_window, text='MC : ')
             l_mc.place(x=x_off, y=1 * y_line_w + 5)
             self.xyz_mc_entry = tk.Entry(self.main_window, width=8)
@@ -279,7 +291,7 @@ class TkWindow:
             self.update_values_xyz(reanalyse=False)
             self.xyz_control_visible = True
         # create a stream object that is further used for the analysis
-        self.strea_obj = STREAM(self.input_data[self.idx_possible_1], radiant=[self.ra_stream, self.dec_stream])
+        self.stream_obj = STREAM(self.input_data[self.idx_possible_1], radiant=[self.ra_stream, self.dec_stream])
         # produce visualization or the second step
         self.analysis_second_step_plots()
 
@@ -292,18 +304,66 @@ class TkWindow:
             self.canvas_velxyz.draw()
 
         if self.xyz_mc > 0:
-            self.strea_obj.monte_carlo_simulation(samples=self.xyz_mc, distribution='normal')
+            self.stream_obj.monte_carlo_simulation(samples=self.xyz_mc, distribution='normal')
             mc_plot = True
         else:
             mc_plot = False
 
         # add its graphs to the tk gui
-        self.canvas_vel3d = FigureCanvasTkAgg(self.strea_obj.estimate_stream_dimensions(path=None, MC=mc_plot, GUI=True), master=self.main_window)
+        self.canvas_vel3d = FigureCanvasTkAgg(self.stream_obj.estimate_stream_dimensions(path=None, MC=mc_plot, GUI=True), master=self.main_window)
         self.canvas_vel3d._tkcanvas.place(x=10, y=640)
         self.canvas_vel3d.draw()
-        self.canvas_velxyz = FigureCanvasTkAgg(self.strea_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=mc_plot, GUI=True), master=self.main_window)
+        self.canvas_velxyz = FigureCanvasTkAgg(self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=mc_plot, GUI=True), master=self.main_window)
         self.canvas_velxyz._tkcanvas.place(x=670, y=640)
         self.canvas_velxyz.draw()
+        # go to te next analysis step
+        self.analysis_third_step()
+
+    def analysis_third_step(self):
+        # add selection control buttons:
+        if not self.density_control_visible:
+            # create third input column
+            x_off = 950
+            y_line_w = 30
+            l_title = tk.Label(self.main_window, text='Stars density:')
+            l_title.place(x=x_off, y=5)
+            # pm std buttons
+            l_wdth = tk.Label(self.main_window, text='Width : ')
+            l_wdth.place(x=x_off, y=1 * y_line_w + 5)
+            self.den_w_entry = tk.Entry(self.main_window, width=8)
+            self.den_w_entry.place(x=x_off + 50, y=1 * y_line_w + 5)
+            w_p = tk.Button(self.main_window, text='+', command=lambda: self.den_w_set(sign='+'))
+            w_p.place(x=x_off + 120, y=1 * y_line_w + 5, width=30, height=20)
+            w_m = tk.Button(self.main_window, text='-', command=lambda: self.den_w_set(sign='-'))
+            w_m.place(x=x_off + 150, y=1 * y_line_w + 5, width=30, height=20)
+            self.update_values_density(reanalyse=False)
+            self.density_control_visible = True
+        # compute density space of line-of-sight stars as seen from radiant
+        if self.xyz_mc > 0:
+            stars_pos = self.stream_obj.cartesian_rotated_MC
+        else:
+            stars_pos = self.stream_obj.cartesian_rotated
+        stars_pos = np.vstack((stars_pos.x, stars_pos.y)).T
+        print 'Computing density of stars'
+        stars_density = KernelDensity(bandwidth=25., algorithm='auto', kernel='epanechnikov').fit(stars_pos)
+        grid_spacing = 1
+        grid_pc = 750
+        grid_pos = np.arange(-grid_pc, grid_pc, grid_spacing)
+        n_grid_pos = len(grid_pos)
+        _x, _y = np.meshgrid(grid_pos, grid_pos)
+        print 'Computing density field'
+        density_field = stars_density.score_samples(np.vstack((_x.flatten(), _y.flatten())).T)
+        fig, ax = plt.subplots(1, 1)
+        im_ax = ax.imshow(density_field.reshape(n_grid_pos, n_grid_pos), interpolation=None, cmap='seismic', origin='lower')
+        fig.colorbar(im_ax)
+        # fig.set_size_inches(3, 3)
+        # add its graphs to the tk gui
+        self.canvas_density = FigureCanvasTkAgg(fig, master=self.main_window)
+        self.canvas_density._tkcanvas.place(x=550, y=80)
+        self.canvas_density.draw()
+        print ' Density plotted'
+
+
 
     def ra_set(self, sign='+'):
         if sign is '+':
@@ -353,6 +413,13 @@ class TkWindow:
         elif sign is '-':
             self.xyz_mc -= 25
         self.update_values_xyz(reanalyse=True)
+
+    def den_w_set(self, sign='+'):
+        if sign is '+':
+            self.den_w += 10
+        elif sign is '-':
+            self.den_w -= 10
+        self.update_values_density(reanalyse=True)
 
     def add_data(self, data):
         self.input_data = data

@@ -217,7 +217,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = [[90], [0], [45], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None  # [[90], [0], [45], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -246,7 +246,7 @@ parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], 100)
 pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], 100)
 pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], 100)
 
-move_to_dir('Streams_investigation_MC-sigma30_RV-sigma15_parallax')
+move_to_dir('Streams_investigation_MC-sigma20_RV-sigma20_parallax')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -344,17 +344,17 @@ for i_stream in range(n_combinations):
     # ---------------- Final stream matching methods ---------
     # --------------------------------------------------------
     # METHOD 1
-    idx_pm_match = observations_match_mc(
-        tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-        v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50.)
-    # METHOD 2
     # idx_pm_match = observations_match_mc(
-    #     tgas_data['ra_gaia', 'dec_gaia', 'parallax', 'parallax_error'],
-    #     v_xyz_stream, pmra_mc=pmra_MC, pmdec_mc=pmdec_MC, std=3., percent=50.)
+    #     tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+    #     v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50.)
+    # METHOD 2
+    idx_pm_match = observations_match_mc(
+        tgas_data['ra_gaia', 'dec_gaia', 'parallax', 'parallax_error'],
+        v_xyz_stream, pmra_mc=pmra_MC, pmdec_mc=pmdec_MC, std=2., percent=50.)
 
     # selection based on RV observation
     idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'],
-                                           rv_stream_predicted, std=1.5)
+                                           rv_stream_predicted, std=2.)
 
     idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
 

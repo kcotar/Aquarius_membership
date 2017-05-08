@@ -221,7 +221,7 @@ class STREAM:
             ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y],
                             xlim=[stream_center[i_x]-plot_range, stream_center[i_x]+plot_range],
                             ylim=[stream_center[i_y]-plot_range, stream_center[i_y]+plot_range])
-        fig.tight_layout()
+        # fig.tight_layout()
         if GUI:
             return fig
         elif path is not None:
@@ -247,7 +247,7 @@ class STREAM:
             if self.cartesian_rotated is None:
                 self._rotate_coordinate_system()
             plot_data = self.cartesian_rotated
-        plot_lim = (-600, 600)
+        plot_lim = (-750, 750)
         fig, ax = plt.subplots(1, 1)
         # compute stream parameters
         # self.stream_params = self._determine_stream_param(method='mass')
