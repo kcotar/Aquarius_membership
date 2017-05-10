@@ -7,6 +7,10 @@ import numpy as np
 from astropy.table import Table, vstack
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+from scipy.ndimage import extrema as ndimage_extream
+from skimage.feature import peak_local_max
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
@@ -47,6 +51,9 @@ class STREAM:
         self.cluster_labels = None
         self.cluster_ids = None
         self.n_clusters = None
+        # density field analysis
+        self.density_field = None
+        self.density_peaks = None
 
     def _rotate_coordinate_system(self, MC=False):
         """
@@ -340,3 +347,65 @@ class STREAM:
                     plt.savefig(path_prefix+'_{:02.0f}.png'.format(c_id), dpi=250)
                     plt.close()
             return results_xyz_vector
+
+    def _get_density_estimate_data(self, MC=False):
+        # compute density space of line-of-sight stars as seen from radiant
+        if MC:
+            stars_pos = self.cartesian_rotated_MC
+        else:
+            stars_pos = self.cartesian_rotated
+        return np.vstack((stars_pos.x, stars_pos.y)).T
+
+    def estimate_kernel_bandwidth_cv(self, MC=False, kernel='gaussian', verbose=False):
+        # density bandwidth estimation
+        cv_grid = GridSearchCV(KernelDensity(kernel=kernel), {'bandwidth': np.arange(0, 110, 10)}, cv=10)
+        cv_grid.fit(self._get_density_estimate_data(MC=MC))
+        if verbose:
+            print cv_grid.cv_results_
+        return cv_grid.best_params_.get('bandwidth')
+
+    def _compute_density_field(self, bandwidth=1., kernel='gaussian', MC=False):
+        stars_pos = self._get_density_estimate_data(MC=MC)
+        print 'Computing density of stars'
+        stars_density = KernelDensity(bandwidth=bandwidth, kernel=kernel).fit(stars_pos)
+        grid_spacing = 1
+        grid_pc = 750
+        grid_pos = np.arange(-grid_pc, grid_pc, grid_spacing)
+        n_grid_pos = len(grid_pos)
+        _x, _y = np.meshgrid(grid_pos, grid_pos)
+        print 'Computing density field'
+        density_field = stars_density.score_samples(np.vstack((_x.flatten(), _y.flatten())).T)
+        self.density_field = np.exp(density_field).reshape(n_grid_pos, n_grid_pos) * 1e5
+
+    def _compute_density_field_peaks(self):
+        # some quick checks for data availability
+        if self.density_field is None:
+            # compute density field from given stream data
+            self._compute_density_field()
+        # start actual computation of peaks
+        # _, max = ndimage_extream(self.density_field)
+        self.density_peaks = peak_local_max(self.density_field, min_distance=25, num_peaks=25,
+                                            threshold_abs=0.2, threshold_rel=None)
+
+    def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False,
+                           GUI=False, path='density.png'):
+        if self.density_field is None:
+            # compute density field from given stream data
+            self._compute_density_field(bandwidth=bandwidth, kernel=kernel, MC=MC)
+        fig, ax = plt.subplots(1, 1)
+        im_ax = ax.imshow(self.density_field, interpolation=None, cmap='seismic',
+                          origin='lower', vmin=0., vmax=0.8)
+        if peaks:
+            # determine peaks in density field
+            self._compute_density_field_peaks()
+            ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
+        fig.colorbar(im_ax)
+        fig.set_size_inches(9, 9)
+        fig.tight_layout()
+        if GUI:
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
+        plt.close()

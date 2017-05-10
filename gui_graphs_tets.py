@@ -20,7 +20,7 @@ idx_ok = np.logical_and(idx_ok,
                         np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
 # remove observations with large RV uncertainties
 idx_ok = np.logical_and(idx_ok,
-                        tgas_data['RV_error'] < 20.)
+                        tgas_data['RV_error'] < 5.)
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
 print 'Number of valid observations: '+str(len(tgas_data))

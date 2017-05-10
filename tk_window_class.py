@@ -9,7 +9,7 @@ from find_streams_analysis import *
 from find_streams_selection import *
 from find_streams_analysis_functions import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-from sklearn.neighbors import KernelDensity
+
 
 import sys
 if sys.version_info[0] < 3:
@@ -32,7 +32,7 @@ class TkWindow:
         self.rv_stream = 45.
 
         # first step analysis variables
-        self.parallax_MC_n = 100
+        self.parallax_MC_n = 200
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
@@ -47,7 +47,7 @@ class TkWindow:
 
         # third step analysis variables
         self.density_control_visible = False
-        self.den_w = 20
+        self.den_w = 30
 
         # window
         self.main_window = tk.Tk()
@@ -136,7 +136,7 @@ class TkWindow:
         self.den_w_entry.delete(0, tk.END)
         self.den_w_entry.insert(0, str(self.den_w))
         if reanalyse:
-            self.analysis_third_step()
+            self.analysis_third_step_proceed()
 
     def analysis_first_step(self):
         # add selection control buttons:
@@ -305,19 +305,23 @@ class TkWindow:
 
         if self.xyz_mc > 0:
             self.stream_obj.monte_carlo_simulation(samples=self.xyz_mc, distribution='normal')
-            mc_plot = True
+            self.mc_plot = True
         else:
-            mc_plot = False
+            self.mc_plot = False
 
         # add its graphs to the tk gui
-        self.canvas_vel3d = FigureCanvasTkAgg(self.stream_obj.estimate_stream_dimensions(path=None, MC=mc_plot, GUI=True), master=self.main_window)
+        self.canvas_vel3d = FigureCanvasTkAgg(self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True), master=self.main_window)
         self.canvas_vel3d._tkcanvas.place(x=10, y=640)
         self.canvas_vel3d.draw()
-        self.canvas_velxyz = FigureCanvasTkAgg(self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=mc_plot, GUI=True), master=self.main_window)
+        self.canvas_velxyz = FigureCanvasTkAgg(self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True), master=self.main_window)
         self.canvas_velxyz._tkcanvas.place(x=670, y=640)
         self.canvas_velxyz.draw()
         # go to te next analysis step
         self.analysis_third_step()
+
+    def get_density_width_estimation(self):
+        self.den_w = self.stream_obj.estimate_kernel_bandwidth_cv(MC=self.mc_plot, kernel=self.den_kernel_entry.get())
+        self.update_values_density(reanalyse=False)
 
     def analysis_third_step(self):
         # add selection control buttons:
@@ -336,34 +340,39 @@ class TkWindow:
             w_p.place(x=x_off + 120, y=1 * y_line_w + 5, width=30, height=20)
             w_m = tk.Button(self.main_window, text='-', command=lambda: self.den_w_set(sign='-'))
             w_m.place(x=x_off + 150, y=1 * y_line_w + 5, width=30, height=20)
+            # automatic width estimation
+            w_auto = tk.Button(self.main_window, text='Automatic width estimation',
+                               command=lambda: self.get_density_width_estimation())
+            w_auto.place(x=x_off, y=3 * y_line_w + 5, width=200, height=20)
+            # method selector
+            l_method = tk.Label(self.main_window, text='Kernel: ')
+            l_method.place(x=x_off, y=2 * y_line_w + 5)
+            self.den_kernel_entry = tk.StringVar(self.main_window)
+            self.den_kernel_entry.set("cosine")  # initial value
+            method_dd = tk.OptionMenu(self.main_window, self.den_kernel_entry,
+                                      "gaussian", "tophat", "epanechnikov", "exponential", "linear", "cosine")
+            method_dd.place(x=x_off + 60, y=2 * y_line_w + 5, width=130, height=20)
+            # visualize results button
+            w_show = tk.Button(self.main_window, text='Show density plot',
+                               command=lambda: self.analysis_third_step_proceed())
+            w_show.place(x=x_off, y=4 * y_line_w + 5, width=200, height=20)
+            # set/update values
             self.update_values_density(reanalyse=False)
             self.density_control_visible = True
-        # compute density space of line-of-sight stars as seen from radiant
-        if self.xyz_mc > 0:
-            stars_pos = self.stream_obj.cartesian_rotated_MC
-        else:
-            stars_pos = self.stream_obj.cartesian_rotated
-        stars_pos = np.vstack((stars_pos.x, stars_pos.y)).T
-        print 'Computing density of stars'
-        stars_density = KernelDensity(bandwidth=25., algorithm='auto', kernel='epanechnikov').fit(stars_pos)
-        grid_spacing = 1
-        grid_pc = 750
-        grid_pos = np.arange(-grid_pc, grid_pc, grid_spacing)
-        n_grid_pos = len(grid_pos)
-        _x, _y = np.meshgrid(grid_pos, grid_pos)
-        print 'Computing density field'
-        density_field = stars_density.score_samples(np.vstack((_x.flatten(), _y.flatten())).T)
-        fig, ax = plt.subplots(1, 1)
-        im_ax = ax.imshow(density_field.reshape(n_grid_pos, n_grid_pos), interpolation=None, cmap='seismic', origin='lower')
-        fig.colorbar(im_ax)
-        # fig.set_size_inches(3, 3)
+
+    def analysis_third_step_proceed(self):
+        # handle plots
+        if self.canvas_density is not None:
+            self.canvas_density.get_tk_widget().destroy()
+            self.canvas_density.draw()
+        # acquire density image from stream object
+        density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w, kernel=self.den_kernel_entry.get(),
+                                                         MC=self.mc_plot, GUI=True, peaks=True)
         # add its graphs to the tk gui
-        self.canvas_density = FigureCanvasTkAgg(fig, master=self.main_window)
-        self.canvas_density._tkcanvas.place(x=550, y=80)
+        self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
+        self.canvas_density._tkcanvas.place(x=600, y=150)
         self.canvas_density.draw()
         print ' Density plotted'
-
-
 
     def ra_set(self, sign='+'):
         if sign is '+':
