@@ -25,7 +25,7 @@ QUIVER_WIDTH = 0.001
 
 
 class TkWindow:
-    def __init__(self, w=1350, h=1130, title=''):
+    def __init__(self, w=1750, h=1000, title=''):
         # stream parameters
         self.ra_stream = 90.
         self.dec_stream = 0.
@@ -247,6 +247,7 @@ class TkWindow:
                      self.pmra_stream_predicted[self.idx_possible_1], self.pmdec_stream_predicted[self.idx_possible_1],
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         pm_fig.tight_layout()
+        pm_fig.set_size_inches(7, 5)
         # add plot to canvas
         self.canvas_pm = FigureCanvasTkAgg(pm_fig, master=self.main_window)
         tempframe = tk.Frame()
@@ -266,9 +267,10 @@ class TkWindow:
         rv_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'] + dec_offset, self.rv_stream_predicted[self.idx_possible_1], 0.,
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         rv_fig.tight_layout()
+        rv_fig.set_size_inches(7, 5)
         # add plot to canvas
         self.canvas_rv = FigureCanvasTkAgg(rv_fig, master=self.main_window)
-        self.canvas_rv._tkcanvas.place(x=670, y=140)
+        self.canvas_rv._tkcanvas.place(x=590, y=140)
         self.canvas_rv.draw()
 
     def analysis_second_step(self):
@@ -310,11 +312,15 @@ class TkWindow:
             self.mc_plot = False
 
         # add its graphs to the tk gui
-        self.canvas_vel3d = FigureCanvasTkAgg(self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True), master=self.main_window)
-        self.canvas_vel3d._tkcanvas.place(x=10, y=640)
+        vel3d_fig = self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True)
+        vel3d_fig.set_size_inches(7, 5)
+        self.canvas_vel3d = FigureCanvasTkAgg(vel3d_fig, master=self.main_window)
+        self.canvas_vel3d._tkcanvas.place(x=10, y=560)
         self.canvas_vel3d.draw()
-        self.canvas_velxyz = FigureCanvasTkAgg(self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True), master=self.main_window)
-        self.canvas_velxyz._tkcanvas.place(x=670, y=640)
+        velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
+        velxyz_fig.set_size_inches(7, 5)
+        self.canvas_velxyz = FigureCanvasTkAgg(velxyz_fig, master=self.main_window)
+        self.canvas_velxyz._tkcanvas.place(x=590, y=560)
         self.canvas_velxyz.draw()
         # go to te next analysis step
         self.analysis_third_step()
@@ -370,7 +376,7 @@ class TkWindow:
                                                          MC=self.mc_plot, GUI=True, peaks=True)
         # add its graphs to the tk gui
         self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
-        self.canvas_density._tkcanvas.place(x=600, y=150)
+        self.canvas_density._tkcanvas.place(x=1170, y=140)
         self.canvas_density.draw()
         print ' Density plotted'
 

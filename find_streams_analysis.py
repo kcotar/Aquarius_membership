@@ -400,7 +400,7 @@ class STREAM:
             self._compute_density_field_peaks()
             ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
         fig.colorbar(im_ax)
-        fig.set_size_inches(9, 9)
+        fig.set_size_inches(7,7)
         fig.tight_layout()
         if GUI:
             return fig
