@@ -4,7 +4,7 @@ import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
 
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, Column
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import KernelDensity
@@ -24,17 +24,22 @@ class STREAM:
         :param radiant:
         """
         self.input_data = data
+        # add unique id to input rows
+        self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = coord.SkyCoord(ra=data['ra_gaia']*un.deg,
-                                        dec=data['dec_gaia']*un.deg,
-                                        distance=data['parsec']*un.pc).cartesian
+        self.cartesian = coord.SkyCoord(ra=self.input_data['ra_gaia']*un.deg,
+                                        dec=self.input_data['dec_gaia']*un.deg,
+                                        distance=self.input_data['parsec']*un.pc).cartesian
         if self.radiant is not None:
             self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
                                                     dec=radiant[1]*un.deg,
                                                     distance=3000).cartesian
         # prepare labels that will be used later on
-        self.cartesian_rotated = None
+        if radiant is not None:
+            self._rotate_coordinate_system(MC=False)
+        else:
+            self.cartesian_rotated = None
         self.stream_params = None
         # store galactic and cartesian velocities
         self.uvw_vel = None
@@ -118,15 +123,15 @@ class STREAM:
         n_input_rows = len(self.input_data)
         n_MC_rows = n_input_rows * samples
         cols_MC = ['RV', 'parallax', 'pmra', 'pmdec']
-        cols_const = ['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
+        cols_const = ['id_uniq', 'sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
         n_cols_MC = len(cols_MC)
         # create multiple instances of every row
         print 'Creating random observations from given error values'
         for i_r in range(n_input_rows):
             print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
             temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
-                               names=np.array([cols_const, cols_MC]).flatten(),
-                               dtype=['i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
+                               names=np.hstack((cols_const, cols_MC)).flatten(),
+                               dtype=['S32', 'i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
             data_row = self.input_data[i_r]
             for i_c in range(n_cols_MC):
                 col = cols_MC[i_c]
@@ -367,15 +372,13 @@ class STREAM:
     def _compute_density_field(self, bandwidth=1., kernel='gaussian', MC=False):
         stars_pos = self._get_density_estimate_data(MC=MC)
         print 'Computing density of stars'
+        self.density_bandwith = bandwidth
         stars_density = KernelDensity(bandwidth=bandwidth, kernel=kernel).fit(stars_pos)
-        grid_spacing = 1
-        grid_pc = 750
-        grid_pos = np.arange(-grid_pc, grid_pc, grid_spacing)
-        n_grid_pos = len(grid_pos)
+        grid_pos = np.linspace(-self.grid_density_size, self.grid_density_size, self.grid_density_bins)
         _x, _y = np.meshgrid(grid_pos, grid_pos)
         print 'Computing density field'
-        density_field = stars_density.score_samples(np.vstack((_x.flatten(), _y.flatten())).T)
-        self.density_field = np.exp(density_field).reshape(n_grid_pos, n_grid_pos) * 1e5
+        density_field = stars_density.score_samples(np.vstack((_x.ravel(), _y.ravel())).T) + np.log(stars_pos.shape[0])
+        self.density_field = np.exp(density_field).reshape(_x.shape) * 1e3
 
     def _compute_density_field_peaks(self):
         # some quick checks for data availability
@@ -384,25 +387,90 @@ class STREAM:
             self._compute_density_field()
         # start actual computation of peaks
         # _, max = ndimage_extream(self.density_field)
+        print 'Computing local density peaks'
         self.density_peaks = peak_local_max(self.density_field, min_distance=25, num_peaks=25,
-                                            threshold_abs=0.2, threshold_rel=None)
+                                            threshold_abs=1., threshold_rel=None)
+
+    def get_nearest_density_peak(self, x_img=None, y_img=None):
+        if x_img is None or y_img is None:
+            print 'Cannot compute nearest peak possition'
+            return None, None
+        else:
+            idx_peak = np.argmin(np.sqrt((self.density_peaks[:, 1] - x_img)**2 + (self.density_peaks[:, 0] - y_img)**2))
+            x_peak = 1.* self.density_peaks[idx_peak, 1] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
+            y_peak = 1.* self.density_peaks[idx_peak, 0] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
+            return x_peak, y_peak
 
     def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False,
-                           GUI=False, path='density.png'):
+                           GUI=False, path='density.png',
+                           grid_size=750, grid_bins=2000):
+        self.grid_density_size = grid_size
+        self.grid_density_bins = grid_bins
         if self.density_field is None:
             # compute density field from given stream data
             self._compute_density_field(bandwidth=bandwidth, kernel=kernel, MC=MC)
         fig, ax = plt.subplots(1, 1)
         im_ax = ax.imshow(self.density_field, interpolation=None, cmap='seismic',
-                          origin='lower', vmin=0., vmax=0.8)
+                          origin='lower', vmin=0., vmax=4.)
         if peaks:
             # determine peaks in density field
             self._compute_density_field_peaks()
             ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
         fig.colorbar(im_ax)
-        fig.set_size_inches(7,7)
+        ax.set_axis_off()
         fig.tight_layout()
         if GUI:
+            fig.set_size_inches(5.6, 4)
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
+        plt.close()
+
+    def show_density_selection(self, x_img=None, y_img=None, xyz_stream=None,
+                               MC=False, GUI=False, path='density_selection.png'):
+        # first get nearest peak coordinates from image to x' y' coordinates
+        x_peak, y_peak = self.get_nearest_density_peak(x_img, y_img)
+        # determine objects that lie in the vicinity of the peak
+        idx_in_selection = np.sqrt((self.cartesian_rotated.x.value - x_peak)**2 + (self.cartesian_rotated.y.value - y_peak)**2) < self.density_bandwith
+        n_in_range = np.sum(idx_in_selection)
+        print n_in_range
+        if n_in_range <= 0:
+            print 'No object in selection'
+            return None
+
+        if MC:
+            uniq_id_selected = self.input_data['id_uniq'][idx_in_selection]
+            idx_selection_MC = np.in1d(self.data_MC['id_uniq'], uniq_id_selected)
+            plot_data = self.xyz_vel_MC[idx_selection_MC]
+        else:
+            plot_data = self.xyz_vel[idx_in_selection]
+
+        plot_range = 10
+        stream_center = xyz_stream
+        labels = ['X', 'Y', 'Z']
+        # Create a plot
+        plot_comb = [[0, 1], [2, 1], [0, 2]]
+        plot_pos = [[0, 0], [0, 1], [1, 0]]
+        fig, ax = plt.subplots(2, 2)
+        for i_c in range(len(plot_comb)):
+            fig_pos = (plot_pos[i_c][0], plot_pos[i_c][1])
+            i_x = plot_comb[i_c][0]
+            i_y = plot_comb[i_c][1]
+            if MC:
+                alpha_use = 0.2
+            else:
+                alpha_use = 1.
+            if stream_center is not None:
+                ax[fig_pos].scatter(stream_center[i_x], stream_center[i_y], lw=0, c='black', s=10, marker='*')
+            ax[fig_pos].scatter(plot_data[:, i_x], plot_data[:, i_y], lw=0, c='blue', s=2, alpha=alpha_use)
+            ax[fig_pos].set(xlabel=labels[i_x], ylabel=labels[i_y],
+                            xlim=[stream_center[i_x] - plot_range, stream_center[i_x] + plot_range],
+                            ylim=[stream_center[i_y] - plot_range, stream_center[i_y] + plot_range])
+        # fig.tight_layout()
+        if GUI:
+            fig.set_size_inches(5.6, 4)
             return fig
         elif path is not None:
             plt.savefig(path, dpi=250)

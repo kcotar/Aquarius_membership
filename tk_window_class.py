@@ -9,7 +9,9 @@ from find_streams_analysis import *
 from find_streams_selection import *
 from find_streams_analysis_functions import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-
+from matplotlib.backend_bases import MouseEvent
+from matplotlib.widgets import LassoSelector, Lasso
+from matplotlib.path import Path
 
 import sys
 if sys.version_info[0] < 3:
@@ -61,6 +63,7 @@ class TkWindow:
         self.canvas_vel3d = None
         self.canvas_velxyz = None
         self.canvas_density = None
+        self.canvas_density_selected = None
 
         # create first input column
         x_off = 5
@@ -247,7 +250,7 @@ class TkWindow:
                      self.pmra_stream_predicted[self.idx_possible_1], self.pmdec_stream_predicted[self.idx_possible_1],
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         pm_fig.tight_layout()
-        pm_fig.set_size_inches(7, 5)
+        pm_fig.set_size_inches(5.6, 4, forward=True)
         # add plot to canvas
         self.canvas_pm = FigureCanvasTkAgg(pm_fig, master=self.main_window)
         tempframe = tk.Frame()
@@ -267,7 +270,7 @@ class TkWindow:
         rv_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'] + dec_offset, self.rv_stream_predicted[self.idx_possible_1], 0.,
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         rv_fig.tight_layout()
-        rv_fig.set_size_inches(7, 5)
+        rv_fig.set_size_inches(5.6, 4, forward=True)
         # add plot to canvas
         self.canvas_rv = FigureCanvasTkAgg(rv_fig, master=self.main_window)
         self.canvas_rv._tkcanvas.place(x=590, y=140)
@@ -313,12 +316,12 @@ class TkWindow:
 
         # add its graphs to the tk gui
         vel3d_fig = self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True)
-        vel3d_fig.set_size_inches(7, 5)
+        vel3d_fig.set_size_inches(5.6, 4, forward=True)
         self.canvas_vel3d = FigureCanvasTkAgg(vel3d_fig, master=self.main_window)
         self.canvas_vel3d._tkcanvas.place(x=10, y=560)
         self.canvas_vel3d.draw()
         velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
-        velxyz_fig.set_size_inches(7, 5)
+        velxyz_fig.set_size_inches(5.6, 4, forward=True)
         self.canvas_velxyz = FigureCanvasTkAgg(velxyz_fig, master=self.main_window)
         self.canvas_velxyz._tkcanvas.place(x=590, y=560)
         self.canvas_velxyz.draw()
@@ -371,12 +374,33 @@ class TkWindow:
         if self.canvas_density is not None:
             self.canvas_density.get_tk_widget().destroy()
             self.canvas_density.draw()
+        if self.canvas_density_selected is not None:
+            self.canvas_density_selected.get_tk_widget().destroy()
+            self.canvas_density_selected.draw()
         # acquire density image from stream object
+        xyz_grid_range = 750
+        xyz_grid_bins = 2000
         density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w, kernel=self.den_kernel_entry.get(),
-                                                         MC=self.mc_plot, GUI=True, peaks=True)
+                                                         MC=False, GUI=True, peaks=True,  # MC should always be disabled for this
+                                                         grid_size=xyz_grid_range, grid_bins=xyz_grid_bins)
+
+        def callback(event):
+            x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
+            print "Selected peak at X':{0} Y':{1}".format(x_dash, y_dash)
+            # handle plots
+            if self.canvas_density_selected is not None:
+                self.canvas_density_selected.get_tk_widget().destroy()
+                self.canvas_density_selected.draw()
+            selected_density_fig = self.stream_obj.show_density_selection(x_img=event.xdata, y_img=event.ydata, xyz_stream=self.v_xyz_stream,
+                                                                          MC=self.mc_plot, GUI=True)
+            self.canvas_density_selected = FigureCanvasTkAgg(selected_density_fig, master=self.main_window)
+            self.canvas_density_selected._tkcanvas.place(x=1170, y=560)
+            self.canvas_density_selected.draw()
+
         # add its graphs to the tk gui
         self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
         self.canvas_density._tkcanvas.place(x=1170, y=140)
+        self.canvas_density.mpl_connect('button_press_event', callback)
         self.canvas_density.draw()
         print ' Density plotted'
 
