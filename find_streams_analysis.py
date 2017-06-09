@@ -28,9 +28,7 @@ class STREAM:
         self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = coord.SkyCoord(ra=self.input_data['ra_gaia']*un.deg,
-                                        dec=self.input_data['dec_gaia']*un.deg,
-                                        distance=self.input_data['parsec']*un.pc).cartesian
+        self.cartesian = motion_to_cartesic
         if self.radiant is not None:
             self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
                                                     dec=radiant[1]*un.deg,

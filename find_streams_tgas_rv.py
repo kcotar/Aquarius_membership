@@ -92,7 +92,7 @@ out_file_fits = 'RAVE_GALAH_TGAS_stack.fits'
 if os.path.isfile(out_file_fits):
     tgas_data = Table.read(out_file_fits)
 else:
-    galah_param = Table.read(galah_data_dir+'sobject_iraf_param_1.1.fits')
+    galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.csv')
     galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
     rave_param = Table.read(rave_data_dir+'RAVE_DR5.fits')
     rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
@@ -118,6 +118,8 @@ else:
     rave_joined = join(rave_param, rave_tgas, keys='RAVE_OBS_ID', join_type='inner')
     tgas_data = vstack([galah_joined[use_columns_galah], rave_joined[use_columns_rave]], join_type='outer')
     tgas_data.write(out_file_fits, format='fits')
+
+raise SystemExit
 
 # perform some data cleaning and housekeeping
 idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far away or problems in data reduction
