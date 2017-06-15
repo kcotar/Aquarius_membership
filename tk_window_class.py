@@ -34,7 +34,7 @@ class TkWindow:
         self.rv_stream = 45.
 
         # first step analysis variables
-        self.parallax_MC_n = 200
+        self.parallax_MC_n = 250
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
@@ -49,7 +49,9 @@ class TkWindow:
 
         # third step analysis variables
         self.density_control_visible = False
-        self.den_w = 30
+        self.den_w = 30.
+        self.dbscan_samp = 10.
+        self.dbscan_eps = 10.
 
         # window
         self.main_window = tk.Tk()
@@ -64,6 +66,11 @@ class TkWindow:
         self.canvas_velxyz = None
         self.canvas_density = None
         self.canvas_density_selected = None
+
+        # toolbar constainers
+        self.toolbar_pmpos = None
+        self.toolbar_inter = None
+        self.toolbar_density = None
 
         # create first input column
         x_off = 5
@@ -139,7 +146,15 @@ class TkWindow:
         self.den_w_entry.delete(0, tk.END)
         self.den_w_entry.insert(0, str(self.den_w))
         if reanalyse:
-            self.analysis_third_step_proceed()
+            self.analysis_third_step_proceed(density=True)
+
+    def update_values_dbscan(self, reanalyse=False):
+        self.samp_w_entry.delete(0, tk.END)
+        self.samp_w_entry.insert(0, str(self.dbscan_samp))
+        self.esp_w_entry.delete(0, tk.END)
+        self.esp_w_entry.insert(0, str(self.dbscan_eps))
+        if reanalyse:
+            self.analysis_third_step_proceed(dbscan=True)
 
     def analysis_first_step(self):
         # add selection control buttons:
@@ -239,6 +254,8 @@ class TkWindow:
         if self.canvas_rv is not None:
             self.canvas_rv.get_tk_widget().destroy()
             self.canvas_rv.draw()
+        if self.toolbar_pmpos is not None:
+            self.toolbar_pmpos.destroy()
 
         pm_fig, pm_ax = plt.subplots(1,1)
         pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
@@ -253,9 +270,9 @@ class TkWindow:
         pm_fig.set_size_inches(5.6, 4, forward=True)
         # add plot to canvas
         self.canvas_pm = FigureCanvasTkAgg(pm_fig, master=self.main_window)
-        tempframe = tk.Frame()
-        tempframe.place(x=10, y=140)
-        toolbar = NavigationToolbar2TkAgg(self.canvas_pm, tempframe)
+        self.toolbar_pmpos = tk.Frame()
+        self.toolbar_pmpos.place(x=10, y=140)
+        toolbar = NavigationToolbar2TkAgg(self.canvas_pm, self.toolbar_pmpos)
         toolbar.draw()
         self.canvas_pm._tkcanvas.place(x=10, y=140)
         self.canvas_pm.draw()
@@ -307,6 +324,8 @@ class TkWindow:
         if self.canvas_velxyz is not None:
             self.canvas_velxyz.get_tk_widget().destroy()
             self.canvas_velxyz.draw()
+        if self.toolbar_inter is not None:
+            self.toolbar_inter.destroy()
 
         if self.xyz_mc > 0:
             self.stream_obj.monte_carlo_simulation(samples=self.xyz_mc, distribution='normal')
@@ -315,9 +334,14 @@ class TkWindow:
             self.mc_plot = False
 
         # add its graphs to the tk gui
-        vel3d_fig = self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True)
+        # vel3d_fig = self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True)
+        vel3d_fig = self.stream_obj.plot_intersections(xyz_vel_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
         vel3d_fig.set_size_inches(5.6, 4, forward=True)
         self.canvas_vel3d = FigureCanvasTkAgg(vel3d_fig, master=self.main_window)
+        self.toolbar_inter = tk.Frame()
+        self.toolbar_inter.place(x=10, y=560)
+        toolbartemp = NavigationToolbar2TkAgg(self.canvas_vel3d, self.toolbar_inter)
+        toolbartemp.draw()
         self.canvas_vel3d._tkcanvas.place(x=10, y=560)
         self.canvas_vel3d.draw()
         velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
@@ -338,7 +362,7 @@ class TkWindow:
             # create third input column
             x_off = 950
             y_line_w = 30
-            l_title = tk.Label(self.main_window, text='Stars density:')
+            l_title = tk.Label(self.main_window, text='Intersections density:')
             l_title.place(x=x_off, y=5)
             # pm std buttons
             l_wdth = tk.Label(self.main_window, text='Width : ')
@@ -363,13 +387,41 @@ class TkWindow:
             method_dd.place(x=x_off + 60, y=2 * y_line_w + 5, width=130, height=20)
             # visualize results button
             w_show = tk.Button(self.main_window, text='Show density plot',
-                               command=lambda: self.analysis_third_step_proceed())
+                               command=lambda: self.analysis_third_step_proceed(density=True))
             w_show.place(x=x_off, y=4 * y_line_w + 5, width=200, height=20)
             # set/update values
             self.update_values_density(reanalyse=False)
+
+            # DBSCAN settings
+            x_off = 1250
+            l_title = tk.Label(self.main_window, text='Intersections DBSCAN:')
+            l_title.place(x=x_off, y=5)
+            # dbscan buttons
+            l_smp = tk.Label(self.main_window, text='Samples : ')
+            l_smp.place(x=x_off, y=1 * y_line_w + 5)
+            self.samp_w_entry = tk.Entry(self.main_window, width=8)
+            self.samp_w_entry.place(x=x_off + 50, y=1 * y_line_w + 5)
+            w_p = tk.Button(self.main_window, text='+', command=lambda: self.dbscan_samp_set(sign='+'))
+            w_p.place(x=x_off + 120, y=1 * y_line_w + 5, width=30, height=20)
+            w_m = tk.Button(self.main_window, text='-', command=lambda: self.dbscan_samp_set(sign='-'))
+            w_m.place(x=x_off + 150, y=1 * y_line_w + 5, width=30, height=20)
+            l_esp = tk.Label(self.main_window, text='Esp : ')
+            l_esp.place(x=x_off, y=2 * y_line_w + 5)
+            self.esp_w_entry = tk.Entry(self.main_window, width=8)
+            self.esp_w_entry.place(x=x_off + 50, y=2 * y_line_w + 5)
+            w_p = tk.Button(self.main_window, text='+', command=lambda: self.dbscan_eps_set(sign='+'))
+            w_p.place(x=x_off + 120, y=2 * y_line_w + 5, width=30, height=20)
+            w_m = tk.Button(self.main_window, text='-', command=lambda: self.dbscan_eps_set(sign='-'))
+            w_m.place(x=x_off + 150, y=2 * y_line_w + 5, width=30, height=20)
+            self.update_values_dbscan(reanalyse=False)
+            # visualize results button
+            w_show = tk.Button(self.main_window, text='Show DBSCAN plot',
+                               command=lambda: self.analysis_third_step_proceed(dbscan=True))
+            w_show.place(x=x_off, y=3 * y_line_w + 5, width=200, height=20)
+
             self.density_control_visible = True
 
-    def analysis_third_step_proceed(self):
+    def analysis_third_step_proceed(self, dbscan=False, density=False):
         # handle plots
         if self.canvas_density is not None:
             self.canvas_density.get_tk_widget().destroy()
@@ -377,32 +429,50 @@ class TkWindow:
         if self.canvas_density_selected is not None:
             self.canvas_density_selected.get_tk_widget().destroy()
             self.canvas_density_selected.draw()
-        # acquire density image from stream object
-        xyz_grid_range = 750
-        xyz_grid_bins = 2000
-        density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w, kernel=self.den_kernel_entry.get(),
-                                                         MC=False, GUI=True, peaks=True,  # MC should always be disabled for this
-                                                         grid_size=xyz_grid_range, grid_bins=xyz_grid_bins)
+        if self.toolbar_density is not None:
+            self.toolbar_density.destroy()
 
-        def callback(event):
-            x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
-            print "Selected peak at X':{0} Y':{1}".format(x_dash, y_dash)
-            # handle plots
-            if self.canvas_density_selected is not None:
-                self.canvas_density_selected.get_tk_widget().destroy()
+        if density:
+            # acquire density image from stream object
+            xyz_grid_range = 750
+            xyz_grid_bins = 2000
+            density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w,
+                                                             kernel=self.den_kernel_entry.get(),
+                                                             MC=False, GUI=True, peaks=True,
+                                                             # MC should always be disabled for this
+                                                             grid_size=xyz_grid_range, grid_bins=xyz_grid_bins)
+
+            def callback(event):
+                x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
+                print "Selected peak at X':{0} Y':{1}".format(x_dash, y_dash)
+                # handle plots
+                if self.canvas_density_selected is not None:
+                    self.canvas_density_selected.get_tk_widget().destroy()
+                    self.canvas_density_selected.draw()
+                selected_density_fig = self.stream_obj.show_density_selection(x_img=event.xdata, y_img=event.ydata, xyz_stream=self.v_xyz_stream,
+                                                                              MC=self.mc_plot, GUI=True)
+                self.canvas_density_selected = FigureCanvasTkAgg(selected_density_fig, master=self.main_window)
+                self.canvas_density_selected._tkcanvas.place(x=1170, y=560)
                 self.canvas_density_selected.draw()
-            selected_density_fig = self.stream_obj.show_density_selection(x_img=event.xdata, y_img=event.ydata, xyz_stream=self.v_xyz_stream,
-                                                                          MC=self.mc_plot, GUI=True)
-            self.canvas_density_selected = FigureCanvasTkAgg(selected_density_fig, master=self.main_window)
-            self.canvas_density_selected._tkcanvas.place(x=1170, y=560)
-            self.canvas_density_selected.draw()
 
-        # add its graphs to the tk gui
-        self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
-        self.canvas_density._tkcanvas.place(x=1170, y=140)
-        self.canvas_density.mpl_connect('button_press_event', callback)
-        self.canvas_density.draw()
-        print ' Density plotted'
+            # add its graphs to the tk gui
+            self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
+            self.canvas_density._tkcanvas.place(x=1170, y=140)
+            self.canvas_density.mpl_connect('button_press_event', callback)
+            self.canvas_density.draw()
+            print ' Density plotted'
+        elif dbscan:
+            density_fig = self.stream_obj.show_dbscan_field(samples=self.dbscan_samp, eps=self.dbscan_eps,
+                                                            GUI=True, peaks=True)
+            # add its graphs to the tk gui
+            self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
+            self.toolbar_density = tk.Frame()
+            self.toolbar_density.place(x=1170, y=140)
+            toolbar = NavigationToolbar2TkAgg(self.canvas_density, self.toolbar_density)
+            toolbar.draw()
+            self.canvas_density._tkcanvas.place(x=1170, y=140)
+            self.canvas_density.draw()
+            self.stream_obj.evaluate_dbscan_field(MC=self.mc_plot)
 
     def ra_set(self, sign='+'):
         if sign is '+':
@@ -458,7 +528,21 @@ class TkWindow:
             self.den_w += 10
         elif sign is '-':
             self.den_w -= 10
-        self.update_values_density(reanalyse=True)
+        self.update_values_density(reanalyse=False)
+
+    def dbscan_samp_set(self, sign='+'):
+        if sign is '+':
+            self.dbscan_samp += 5
+        elif sign is '-':
+            self.dbscan_samp -= 5
+        self.update_values_dbscan(reanalyse=False)
+
+    def dbscan_eps_set(self, sign='+'):
+        if sign is '+':
+            self.dbscan_eps += 2
+        elif sign is '-':
+            self.dbscan_eps -= 2
+        self.update_values_dbscan(reanalyse=False)
 
     def add_data(self, data):
         self.input_data = data

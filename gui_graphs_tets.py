@@ -34,7 +34,7 @@ tgas_data.add_column(Column(1e3/tgas_data['parallax'].data, name='parsec'))
 # add systematic error to the parallax uncertainties as suggested for the TGAS dataset
 tgas_data['parallax_error'] = np.sqrt(tgas_data['parallax_error'].data**2 + 0.3**2)
 # limit data by parsec
-tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 750, tgas_data['parsec'] > 0)]
+tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 2000, tgas_data['parsec'] > 0)]
 print 'Number of points after distance limits: ' + str(len(tgas_data))
 
 window = TkWindow()

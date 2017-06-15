@@ -1,5 +1,6 @@
 import numpy as np
 import astropy.units as un
+import os
 
 from astropy.table import Table, join
 from galpy.potential import MWPotential2014, LogarithmicHaloPotential
@@ -58,7 +59,7 @@ for object in tgas_data:
         orbit = Orbit(vxvv=[object['ra_gaia'] * un.deg,
                             object['dec_gaia'] * un.deg,
                             1./object['parallax'] * un.kpc,
-                            object['pmra'] * np.cos(np.deg2rad(object['dec_gaia'])) * un.mas/un.yr,
+                            object['pmra'] * un.mas/un.yr,
                             object['pmdec'] * un.mas/un.yr,
                             object[rv_string] * un.km/un.s], radec=True)
         orbit.turn_physical_off()
@@ -95,4 +96,8 @@ for object in tgas_data:
         print 'Problem with object: '+str(i_o)
 
 # save results
-tgas_data.write(out_dir + data_file[:-5]+'_actions.fits')
+out_fits_file = out_dir + data_file[:-5]+'_actions.fits'
+if os.path.isfile(out_fits_file):
+    # remove it
+    os.remove(out_fits_file)
+tgas_data.write(out_fits_file)

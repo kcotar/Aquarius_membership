@@ -11,6 +11,7 @@ from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 from scipy.ndimage import extrema as ndimage_extream
 from skimage.feature import peak_local_max
+from vector_plane_calculations import *
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
@@ -28,7 +29,9 @@ class STREAM:
         self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = motion_to_cartesic
+        self.cartesian = coord.SkyCoord(ra=self.input_data['ra_gaia'] * un.deg,
+                                        dec=self.input_data['dec_gaia'] * un.deg,
+                                        distance=self.input_data['parsec'] * un.pc).cartesian
         if self.radiant is not None:
             self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
                                                     dec=radiant[1]*un.deg,
@@ -119,14 +122,15 @@ class STREAM:
         self.data_MC = None
         # create new dataset based on original data considering measurement errors using monte carlo approach
         n_input_rows = len(self.input_data)
-        n_MC_rows = n_input_rows * samples
+        # n_MC_rows = n_input_rows * samples
         cols_MC = ['RV', 'parallax', 'pmra', 'pmdec']
         cols_const = ['id_uniq', 'sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
         n_cols_MC = len(cols_MC)
         # create multiple instances of every row
         print 'Creating random observations from given error values'
         for i_r in range(n_input_rows):
-            print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
+            if i_r % 250 == 0:
+                print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
             temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
                                names=np.hstack((cols_const, cols_MC)).flatten(),
                                dtype=['S32', 'i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
@@ -257,7 +261,7 @@ class STREAM:
             if self.cartesian_rotated is None:
                 self._rotate_coordinate_system()
             plot_data = self.cartesian_rotated
-        plot_lim = (-750, 750)
+        plot_lim = (-1000, 1000)
         fig, ax = plt.subplots(1, 1)
         # compute stream parameters
         # self.stream_params = self._determine_stream_param(method='mass')
@@ -292,6 +296,35 @@ class STREAM:
         # also return computed parameters
         plt.close()
         return self.stream_params
+
+    def plot_intersections(self, xyz_vel_stream=None, path='intersect.png', MC=False, GUI=False):
+        plot_lim = (-1000, 1000)
+        if MC:
+            star_vel = self.xyz_vel_MC
+            star_pos = self.cartesian_MC
+            alpha_use = 0.2
+        else:
+            star_vel = self.xyz_vel
+            star_pos = self.cartesian
+            alpha_use = 1.
+        if xyz_vel_stream is None:
+            xyz_vel_stream = np.nanmean(star_vel, asxis=0)
+        # compute plane intersects of given dat
+        plane_intersects = stream_plane_vector_intersect(star_pos, star_vel, xyz_vel_stream)
+        self.plane_intersects_2d = intersects_to_2dplane(plane_intersects, xyz_vel_stream)
+        # Create a plot
+        fig, ax = plt.subplots(1, 1)
+        ax.scatter(self.plane_intersects_2d[:, 0], self.plane_intersects_2d[:, 1], lw=0, c='blue', s=2, alpha=alpha_use)
+        ax.scatter(0, 0, lw=0, c='black', s=10, marker='*')  # solar position
+        ax.set(xlabel='X stream plane', ylabel='Y stream plane', xlim=plot_lim, ylim=plot_lim)
+        fig.tight_layout()
+        if GUI:
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
+        plt.close()
 
     def find_overdensities(self, path='dbscan.png'):
         """
@@ -351,13 +384,17 @@ class STREAM:
                     plt.close()
             return results_xyz_vector
 
-    def _get_density_estimate_data(self, MC=False):
-        # compute density space of line-of-sight stars as seen from radiant
-        if MC:
-            stars_pos = self.cartesian_rotated_MC
+    def _get_density_estimate_data(self, MC=False, intersects=True):
+        if intersects:
+            # use intersections
+            return self.plane_intersects_2d
         else:
-            stars_pos = self.cartesian_rotated
-        return np.vstack((stars_pos.x, stars_pos.y)).T
+            # compute density space of line-of-sight stars as seen from radiant
+            if MC:
+                stars_pos = self.cartesian_rotated_MC
+            else:
+                stars_pos = self.cartesian_rotated
+            return np.vstack((stars_pos.x, stars_pos.y)).T
 
     def estimate_kernel_bandwidth_cv(self, MC=False, kernel='gaussian', verbose=False):
         # density bandwidth estimation
@@ -475,3 +512,75 @@ class STREAM:
         else:
             plt.show()
         plt.close()
+
+    def show_dbscan_field(self, samples=10., eps=50, peaks=False, GUI=False, path='density.png'):
+        plot_lim = (-1000, 1000)
+        # select the data
+        data_use = self.plane_intersects_2d
+        # fit the data
+        print 'DBSCAN running'
+        db_fit = DBSCAN(min_samples=samples, eps=eps, algorithm='auto', metric='euclidean', n_jobs=12).fit(data_use)
+        print 'DBSCAN finished'
+        self.cluster_labels = db_fit.labels_
+        # create plot
+        fig, ax = plt.subplots(1, 1)
+        # plot the points that were not signed to ny of the clusters
+        idx_background = self.cluster_labels == -1
+        if np.sum(idx_background) > 0:
+            ax.scatter(data_use[idx_background, 0], data_use[idx_background, 1], c='black', s=2, lw=0, alpha=0.2)
+        # plot clusters by colour
+        idx_clusters = self.cluster_labels >= 0
+        ax.scatter(data_use[idx_clusters, 0], data_use[idx_clusters, 1], c=self.cluster_labels[idx_clusters],
+                   s=2, lw=0, cmap='jet')
+        ax.scatter(0, 0, lw=0, c='black', s=10, marker='*')  # solar position
+        # # TODO
+        # if peaks:
+        #     # determine peaks in density field
+        #     self._compute_density_field_peaks()
+        #     ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
+        # fig.colorbar()
+        ax.set(xlabel='X stream plane', ylabel='Y stream plane', xlim=plot_lim, ylim=plot_lim)
+        fig.tight_layout()
+        if GUI:
+            fig.set_size_inches(5.6, 4)
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
+        plt.close()
+
+    def evaluate_dbscan_field(self, path=None, MC=False):
+        if path is not None:
+            save_output = True
+            txt_out = open(path, 'w')
+        else:
+            save_output = False
+        # get unique numbers of objects
+        if MC:
+            # use MC simulated data
+            star_ids = self.data_MC['id_uniq']
+        else:
+            # use original dataset
+            star_ids = self.input_data['id_uniq']
+        # evluate number of labels
+        db_label, c_label = np.unique(self.cluster_labels, return_counts=True)
+        # loop through every label
+        for i_l in range(len(db_label)):
+            if db_label[i_l] == -1:
+                continue
+            idx_label = self.cluster_labels == db_label[i_l]
+            selected_stars = star_ids[idx_label]
+            star_id, c_star_id = np.unique(selected_stars, return_counts=True)
+            c_mean = np.mean(c_star_id)
+            if c_mean > 2:
+                out_str = 'Label: '+str(db_label[i_l])+'\n  Items: '+str(c_label[i_l])+'\n'
+                out_str += '  Uniq: '+str(len(star_id))+'\n  Max:  '+str(np.max(c_star_id))+'\n  Mean: '+str(c_mean)+'\n \n'
+                if save_output:
+                    txt_out.write(out_str)
+                else:
+                    print out_str
+        if save_output:
+            txt_out.close()
+
+
