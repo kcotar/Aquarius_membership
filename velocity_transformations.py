@@ -29,40 +29,68 @@ def compute_xyz_vel(ra, dec, rv):
         return np.transpose(np.vstack((vx, vy, vz)))
 
 
-def compute_rv(ra, dec, vel):
+def rv_lsr_corr(ra, dec, lsr_vel):
+    # degrees in radians
+    return lsr_vel[0]*np.cos(ra)*np.cos(dec) + lsr_vel[1]*np.sin(ra)*np.cos(dec) + lsr_vel[2]*np.sin(dec)
+
+
+def compute_rv(ra, dec, vel, lsr_vel=None):
     """
 
-    :param ra:
-    :param dec:
+    :param ra: also galactic l or ny kind of longitude, in radians
+    :param dec: also galactic b or ny kind of latitude,     in radians
     :param vel:
+    :param lsr_vel: have to defined in the same coordinate system as ra end deg
     :return:
     """
     unit_vect = compute_xyz_vel(ra, dec, 1.)
-    return np.sum(unit_vect * vel, axis=1)
+    rv_vel = np.sum(unit_vect * vel, axis=1)
+    if lsr_vel is not None:
+        # correct RV velocities for LSR
+        rv_vel -= 0#rv_lsr_corr(ra, dec, lsr_vel)
+    return rv_vel
 
 
-def compute_pmra(ra, dec, dist, vel):
+def pmra_lsr_corr(ra, dec, lsr_vel):
+    # degrees in radians
+    return -lsr_vel[0]*np.sin(ra) + lsr_vel[0]*np.cos(ra)
+
+
+def compute_pmra(ra, dec, dist, vel, lsr_vel=None):
     """
 
-    :param ra:
-    :param dec:
+    :param ra: also galactic l or ny kind of longitude, in radians
+    :param dec: also galactic b or ny kind of latitude, in radians
     :param dist: in parsecs
     :param vel:
+    :param lsr_vel: have to defined in the same coordinate system as ra end deg
     :return:
     """
-    return F / dist * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+    pmra_vel = F / dist * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+    if lsr_vel is not None:
+        pmra_vel -= 0#pmra_lsr_corr(ra, dec, lsr_vel)
+    return pmra_vel
 
 
-def compute_pmdec(ra, dec, dist, vel):
+def pmdec_lsr_corr(ra, dec, lsr_vel):
+    # degrees in radians
+    return -lsr_vel[0]*np.cos(ra)*np.sin(dec) - lsr_vel[1]*np.sin(ra)*np.sin(dec) + lsr_vel[2]*np.cos(dec)
+
+
+def compute_pmdec(ra, dec, dist, vel, lsr_vel=None):
     """
 
-    :param ra:
-    :param dec:
+    :param ra: also galactic l or ny kind of longitude, in radians
+    :param dec: also galactic b or ny kind of latitude, in radians
     :param dist: in parsecs
     :param vel:
+    :param lsr_vel: have to defined in the same coordinate system as ra end deg
     :return:
     """
-    return F / dist * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+    pmdec_vel = F / dist * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+    if lsr_vel is not None:
+        pmdec_vel -= 0#pmdec_lsr_corr(ra, dec, lsr_vel)
+    return pmdec_vel
 
 
 def compute_distance_pmra(ra, dec, pmra, vel, parallax=False):

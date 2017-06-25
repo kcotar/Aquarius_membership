@@ -142,7 +142,12 @@ class STREAM:
                     temp_table[col] = np.random.uniform(data_row[col] - data_row[col + '_error'],
                                                         data_row[col] + data_row[col + '_error'], samples)
                 elif distribution in 'normal':
-                    temp_table[col] = np.random.normal(data_row[col], data_row[col + '_error'], samples)
+                    std_err = data_row[col + '_error']
+                    if std_err == 0:
+                        # in few very rare cases this might actually happen - problem within dataset??
+                        temp_table[col] = data_row[col]
+                    else:
+                        temp_table[col] = np.random.normal(data_row[col], std_err, samples)
             # fill temp table with values that are constant for every MC value
             for col in cols_const:
                 temp_table[col] = data_row[col]

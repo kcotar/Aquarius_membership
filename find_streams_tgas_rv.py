@@ -1,5 +1,6 @@
 import imp, os, glob
 import uncertainties.umath as umath
+import pandas as pd
 
 from uncertainties import unumpy
 from astropy.table import Table, join, Column, unique
@@ -23,6 +24,10 @@ from tsne import *
 
 imp.load_source('norm', '../Stellar_parameters_interpolator/data_normalization.py')
 from norm import *
+
+import astropy.units as un
+import astropy.coordinates as coord
+import gala.coordinates as gal_coord
 
 
 # --------------------------------------------------------
@@ -164,7 +169,7 @@ print 'Number of observations: '+str(len(tgas_data))
 tgas_data = tgas_data.filled()
 
 # remove duplicates
-tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
+# tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
 
 print 'Final number of unique objects: '+str(len(tgas_data))
 
@@ -251,9 +256,9 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(5, 200, rv_step)
-    ra_range = np.arange(0, 360, ra_step)
-    dec_range = np.arange(-90, 90, dec_step)
+    rv_range = np.arange(5, 100, rv_step)
+    ra_range = np.arange(20, 360, ra_step)
+    dec_range = np.arange(5, 90, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -267,78 +272,122 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-n_MC = 250
-parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC)
-pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
-pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
+n_MC_sel = 250
+parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC_sel)
+# pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC_sel)
+# pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC_sel)
 
-move_to_dir('Streams_investigation_MC')
+move_to_dir('Streams_investigation_tests_lb')
+# manual stream combinations
+n_combinations = 2
+ra_combinations = [206.98913108, 206.98913108]
+dec_combinations = [-11.42449097, -11.42449097]
+rv_combinations = [45, -45]
+
+# velocity of the Sun relative to the local disk
+lsr_vel = np.array([10., 5.25, 7.17])  # km/s
+
+# convert Gaia (or any other) coordinates from sky coordinates ra/dec to galactic l/b
+ra_dec_coord = coord.ICRS(ra=tgas_data['ra_gaia']*un.deg, dec=tgas_data['dec_gaia']*un.deg)
+l_b_coord = ra_dec_coord.transform_to(coord.Galactic)
+tgas_data['l_gaia'] = l_b_coord.l.value
+tgas_data['b_gaia'] = l_b_coord.b.value
+# convert Gaia (or any other) proper motion from sky coordinates ra/dec to galactic l/b
+ra_dec_pm = np.vstack((tgas_data['pmra'], tgas_data['pmdec'])) * un.mas/un.yr  # must be of shape (2,N)
+l_b_pm = gal_coord.pm_gal_to_icrs(ra_dec_coord, ra_dec_pm)
+tgas_data['pml'] = l_b_pm[0].value
+tgas_data['pmb'] = l_b_pm[1].value
+
 for i_stream in range(n_combinations):
-    ra_stream = ra_combinations[i_stream]
-    dec_stream = dec_combinations[i_stream]
+    l_stream = ra_combinations[i_stream]
+    b_stream = dec_combinations[i_stream]
     rv_stream = rv_combinations[i_stream]
-    # dist_stream = dist_combinations[i_stream]
 
-    move_to_dir(str(rv_stream))
+    for opposite in [False]: #, True]:
 
-    suffix = 'stream_ra_{:05.1f}_dec_{:04.1f}_rv_{:05.1f}'.format(ra_stream, dec_stream, rv_stream)
-    print 'Working on ' + suffix
+        # dist_stream = dist_combinations[i_stream]
 
-    # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
-    v_xyz_stream = compute_xyz_vel(np.deg2rad(ra_stream), np.deg2rad(dec_stream), rv_stream)
+        move_to_dir(str(rv_stream))
 
-    # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
-    rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
-                                     v_xyz_stream)
+        suffix = 'stream_l_{:05.1f}_b_{:04.1f}_rv_{:05.1f}'.format(l_stream, b_stream, rv_stream)
+        if opposite:
+            suffix += '_rev'
+            rv_stream *= -1.
+        print 'Working on ' + suffix
 
-    idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-                                         v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50.)
+        # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
+        v_xyz_stream = compute_xyz_vel(np.deg2rad(l_stream), np.deg2rad(b_stream), rv_stream)
+        print v_xyz_stream  # as seen from LSR point of view, not Sun's that is moving in respect to the LSR
 
-    idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream, std=2.)
+        # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
+        rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['l_gaia']), np.deg2rad(tgas_data['b_gaia']),
+                                         v_xyz_stream, lsr_vel=lsr_vel)
 
-    idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+        selection_file = suffix+'_obj.txt'
+        if not os.path.exists(selection_file):
+            # standard method 1 from gui
+            idx_pm_match = observations_match_mc(tgas_data['l_gaia', 'b_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+                                                 v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50., lsr_vel=lsr_vel)
+            idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream_predicted, std=2.)
+            idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+            # OR different approach is comparision of velocity vectors itself
 
-    if np.sum(idx_possible) < 10:
-        os.chdir('..')
+            txt_out = open(selection_file, 'w')
+            txt_out.write(','.join([str(pos) for pos in np.where(idx_possible)[0]]))
+            txt_out.close()
+        else:
+            idx_possible = pd.read_csv(selection_file, header=None, sep=',')[0]
+
+        if np.sum(idx_possible) < 10:
+            os.chdir('..')
+            continue
+
+        print np.sum(idx_possible)
         continue
 
-    # data subset
-    tgas_data_selected = tgas_data[idx_possible]
+        # data subset
+        tgas_data_selected = tgas_data[idx_possible]
+        # tgas_data_selected = Table(tgas_data)
 
-    pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data_selected['ra_gaia']), np.deg2rad(tgas_data_selected['dec_gaia']),
-                                         tgas_data_selected['parsec'], v_xyz_stream)
+        pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data_selected['l_gaia']), np.deg2rad(tgas_data_selected['b_gaia']),
+                                             tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel)
 
-    pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data_selected['ra_gaia']), np.deg2rad(tgas_data_selected['dec_gaia']),
-                                           tgas_data_selected['parsec'], v_xyz_stream)
+        pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data_selected['b_gaia']), np.deg2rad(tgas_data_selected['l_gaia']),
+                                               tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel)
 
-    pm_fig, pm_ax = plt.subplots(1, 1)
-    pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
-    pm_ax.scatter(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], lw=0, c='black', s=5)
-    pm_ax.scatter(ra_stream, dec_stream, lw=0, s=15, c='black', marker='*')
-    pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], tgas_data_selected['pmra'],
-                 tgas_data_selected['pmdec'],
-                 pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
-    pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'],
-                 pmra_stream_predicted, pmdec_stream_predicted,
-                 pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
-    pm_fig.tight_layout()
-    plt.savefig(suffix+'_1.png', dpi=350)
-    plt.close()
+        # pm_fig, pm_ax = plt.subplots(1, 1)
+        # pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
+        # pm_ax.scatter(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], lw=0, c='black', s=5)
+        # pm_ax.scatter(ra_stream, dec_stream, lw=0, s=15, c='black', marker='*')
+        # pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], tgas_data_selected['pmra'],
+        #              tgas_data_selected['pmdec'],
+        #              pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
+        # pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'],
+        #              pmra_stream_predicted, pmdec_stream_predicted,
+        #              pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
+        # pm_fig.tight_layout()
+        # plt.savefig(suffix+'_1.png', dpi=350)
+        # plt.close()
 
-    # begin analysis
-    stream_obj = STREAM(tgas_data_selected, radiant=[ra_stream, dec_stream])
+        # begin analysis
+        stream_obj = STREAM(tgas_data_selected, radiant=[l_stream, b_stream])
 
-    stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
+        n_MC_dens = 0
+        if n_MC_dens > 1:
+            MC_set = True
+            stream_obj.monte_carlo_simulation(samples=n_MC_dens, distribution='normal')
+        else:
+            MC_set = False
 
-    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2.png', MC=True, GUI=False)
+        stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2.png', MC=MC_set, GUI=False)
 
-    for samples in list([10, 25, 40]):
-        for eps in list([10, 14, 18]):
-            out_name = suffix+'_3_s{:2.0f}_e{:2.0f}'.format(samples, eps)
-            stream_obj.show_dbscan_field(samples=samples, eps=eps, GUI=False, peaks=True, path=out_name+'.png')
-            stream_obj.evaluate_dbscan_field(MC=True, path=out_name+'.txt')
+        # for samples in list([10, 25, 40]):
+        #     for eps in list([10, 14, 18]):
+        #         out_name = suffix+'_3_s{:2.0f}_e{:2.0f}'.format(samples, eps)
+        #         stream_obj.show_dbscan_field(samples=samples, eps=eps, GUI=False, peaks=True, path=out_name+'.png')
+        #         stream_obj.evaluate_dbscan_field(MC=MC_set, path=out_name+'.txt')
 
-    os.chdir('..')
+        os.chdir('..')
 
 
 
