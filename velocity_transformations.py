@@ -34,7 +34,7 @@ def rv_lsr_corr(ra, dec, lsr_vel):
     return lsr_vel[0]*np.cos(ra)*np.cos(dec) + lsr_vel[1]*np.sin(ra)*np.cos(dec) + lsr_vel[2]*np.sin(dec)
 
 
-def compute_rv(ra, dec, vel, lsr_vel=None):
+def compute_rv(ra, dec, vel, lsr_vel=None, to_solar=False):
     """
 
     :param ra: also galactic l or ny kind of longitude, in radians
@@ -47,7 +47,10 @@ def compute_rv(ra, dec, vel, lsr_vel=None):
     rv_vel = np.sum(unit_vect * vel, axis=1)
     if lsr_vel is not None:
         # correct RV velocities for LSR
-        rv_vel -= 0#rv_lsr_corr(ra, dec, lsr_vel)
+        if to_solar:
+            rv_vel -= rv_lsr_corr(ra, dec, lsr_vel)
+        else:
+            rv_vel += rv_lsr_corr(ra, dec, lsr_vel)
     return rv_vel
 
 
@@ -56,7 +59,7 @@ def pmra_lsr_corr(ra, dec, lsr_vel):
     return -lsr_vel[0]*np.sin(ra) + lsr_vel[0]*np.cos(ra)
 
 
-def compute_pmra(ra, dec, dist, vel, lsr_vel=None):
+def compute_pmra(ra, dec, dist, vel, lsr_vel=None, to_solar=False):
     """
 
     :param ra: also galactic l or ny kind of longitude, in radians
@@ -68,7 +71,10 @@ def compute_pmra(ra, dec, dist, vel, lsr_vel=None):
     """
     pmra_vel = F / dist * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
     if lsr_vel is not None:
-        pmra_vel -= 0#pmra_lsr_corr(ra, dec, lsr_vel)
+        if to_solar:
+            pmra_vel -= pmra_lsr_corr(ra, dec, lsr_vel)
+        else:
+            pmra_vel -= pmra_lsr_corr(ra, dec, lsr_vel)
     return pmra_vel
 
 
@@ -77,7 +83,7 @@ def pmdec_lsr_corr(ra, dec, lsr_vel):
     return -lsr_vel[0]*np.cos(ra)*np.sin(dec) - lsr_vel[1]*np.sin(ra)*np.sin(dec) + lsr_vel[2]*np.cos(dec)
 
 
-def compute_pmdec(ra, dec, dist, vel, lsr_vel=None):
+def compute_pmdec(ra, dec, dist, vel, lsr_vel=None, to_solar=False):
     """
 
     :param ra: also galactic l or ny kind of longitude, in radians
@@ -89,7 +95,10 @@ def compute_pmdec(ra, dec, dist, vel, lsr_vel=None):
     """
     pmdec_vel = F / dist * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
     if lsr_vel is not None:
-        pmdec_vel -= 0#pmdec_lsr_corr(ra, dec, lsr_vel)
+        if to_solar:
+            pmdec_vel -= pmdec_lsr_corr(ra, dec, lsr_vel)
+        else:
+            pmdec_vel += pmdec_lsr_corr(ra, dec, lsr_vel)
     return pmdec_vel
 
 

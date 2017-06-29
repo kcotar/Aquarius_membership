@@ -1,6 +1,7 @@
 import imp
 import astropy.units as un
 import astropy.coordinates as coord
+import gala.coordinates as gal_coord
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -12,40 +13,50 @@ from sklearn.model_selection import GridSearchCV
 from scipy.ndimage import extrema as ndimage_extream
 from skimage.feature import peak_local_max
 from vector_plane_calculations import *
+from velocity_transformations import pmdec_lsr_corr, pmra_lsr_corr, rv_lsr_corr
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
 
 
 class STREAM:
-    def __init__(self, data, radiant=None):
+    def __init__(self, data, radiant=None, lsr=None):
         """
 
         :param data:
         :param radiant:
         """
-        self.input_data = data
+        self.lsr = lsr
+        self.input_data = Table(data)  # it will create new instace of the data
+        # correct values for the lsr movement if given
+        if self.lsr is not None:
+            self.input_data['pml'] += pmra_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
+            self.input_data['pmb'] += pmdec_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
+            self.input_data['RV'] += rv_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
+
         # add unique id to input rows
         self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = coord.SkyCoord(ra=self.input_data['ra_gaia'] * un.deg,
-                                        dec=self.input_data['dec_gaia'] * un.deg,
-                                        distance=self.input_data['parsec'] * un.pc).cartesian
+        self.cartesian = coord.Galactic(l=self.input_data['l_gaia'] * un.deg,
+                                        b=self.input_data['b_gaia'] * un.deg,
+                                        distance=self.input_data['parsec'] * un.pc).trasform_to(coord.Galactocentric)
+                                        # or .cartesian or .trasform_to(coord.Galactocentric)
         if self.radiant is not None:
-            self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
-                                                    dec=radiant[1]*un.deg,
-                                                    distance=3000).cartesian
+            self.radiant_cartesian = coord.Galactic(l=radiant[0]*un.deg,
+                                                    b=radiant[1]*un.deg,
+                                                    distance=3000).trasform_to(coord.Galactocentric)
         # prepare labels that will be used later on
-        if radiant is not None:
-            self._rotate_coordinate_system(MC=False)
-        else:
-            self.cartesian_rotated = None
+        # Coordinate system rotation not needed any more
+        # if radiant is not None:
+        #     self._rotate_coordinate_system(MC=False)
+        # else:
+        #     self.cartesian_rotated = None
         self.stream_params = None
         # store galactic and cartesian velocities
         self.uvw_vel = None
-        xyz_vel = motion_to_cartesic(np.array(self.input_data['ra_gaia']), np.array(self.input_data['dec_gaia']),
-                                     np.array(self.input_data['pmra']), np.array(self.input_data['pmdec']),
+        xyz_vel = motion_to_cartesic(np.array(self.input_data['l_gaia']), np.array(self.input_data['b_gaia']),
+                                     np.array(self.input_data['pml']), np.array(self.input_data['pmb']),
                                      np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
         self.xyz_vel = np.transpose(xyz_vel)
         # store results of monte carlo simulation
@@ -124,7 +135,7 @@ class STREAM:
         n_input_rows = len(self.input_data)
         # n_MC_rows = n_input_rows * samples
         cols_MC = ['RV', 'parallax', 'pmra', 'pmdec']
-        cols_const = ['id_uniq', 'sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
+        cols_const = ['id_uniq', 'sobject_id', 'RAVE_OBS_ID', 'l_gaia', 'b_gaia', 'ra_gaia', 'dec_gaia']
         n_cols_MC = len(cols_MC)
         # create multiple instances of every row
         print 'Creating random observations from given error values'
@@ -163,13 +174,25 @@ class STREAM:
         # if n_bad > 0:
         #     print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
         #     self.data_MC = self.data_MC[np.logical_not(idx_bad)]
+
         # compote cartesian coordinates od simulated data
-        self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
-                                           dec=self.data_MC['dec_gaia'] * un.deg,
-                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).cartesian
+        self.cartesian_MC = coord.Galactic(ra=self.data_MC['l_gaia'] * un.deg,
+                                           dec=self.data_MC['b_gaia'] * un.deg,
+                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).transform_to(coord.Galactocentric)
+
+        # compute pml and pmb values for the newly simulated data
+        l_b_pm = gal_coord.pm_gal_to_icrs(coord.ICRS(ra=self.data_MC['ra_gaia']*un.deg, dec=self.data_MC['dec_gaia']*un.deg),
+                                          np.vstack((self.data_MC['pmra'], self.data_MC['pmdec'])) * un.mas / un.yr)
+        self.data_MC['pml'] = l_b_pm[0].value
+        self.data_MC['pmb'] = l_b_pm[1].value
+        if self.lsr is not None:
+            self.data_MC['pml'] += pmra_lsr_corr(np.deg2rad(self.data_MC['l']), np.deg2rad(self.data_MC['l']), self.lsr)
+            self.data_MC['pmb'] += pmdec_lsr_corr(np.deg2rad(self.data_MC['l']), np.deg2rad(self.data_MC['l']), self.lsr)
+            # RV was already corrected in the stage of data input
+
         # compute xyz velocities
-        xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
-                                     np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
+        xyz_vel = motion_to_cartesic(np.array(self.data_MC['l_gaia']), np.array(self.data_MC['dec_gaia']),
+                                     np.array(self.data_MC['pml']), np.array(self.data_MC['pmb']),
                                      np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
         self.xyz_vel_MC = np.transpose(xyz_vel)
 

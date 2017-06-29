@@ -321,7 +321,7 @@ for i_stream in range(n_combinations):
 
         # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
         rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['l_gaia']), np.deg2rad(tgas_data['b_gaia']),
-                                         v_xyz_stream, lsr_vel=lsr_vel)
+                                         v_xyz_stream, lsr_vel=lsr_vel, to_solar=True)
 
         selection_file = suffix+'_obj.txt'
         if not os.path.exists(selection_file):
@@ -342,35 +342,30 @@ for i_stream in range(n_combinations):
             os.chdir('..')
             continue
 
-        print np.sum(idx_possible)
-        continue
-
         # data subset
         tgas_data_selected = tgas_data[idx_possible]
         # tgas_data_selected = Table(tgas_data)
 
         pmra_stream_predicted = compute_pmra(np.deg2rad(tgas_data_selected['l_gaia']), np.deg2rad(tgas_data_selected['b_gaia']),
-                                             tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel)
-
+                                             tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel, to_solar=True)
         pmdec_stream_predicted = compute_pmdec(np.deg2rad(tgas_data_selected['b_gaia']), np.deg2rad(tgas_data_selected['l_gaia']),
-                                               tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel)
-
-        # pm_fig, pm_ax = plt.subplots(1, 1)
-        # pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
-        # pm_ax.scatter(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], lw=0, c='black', s=5)
-        # pm_ax.scatter(ra_stream, dec_stream, lw=0, s=15, c='black', marker='*')
-        # pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'], tgas_data_selected['pmra'],
-        #              tgas_data_selected['pmdec'],
-        #              pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
-        # pm_ax.quiver(tgas_data_selected['ra_gaia'], tgas_data_selected['dec_gaia'],
-        #              pmra_stream_predicted, pmdec_stream_predicted,
-        #              pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
-        # pm_fig.tight_layout()
-        # plt.savefig(suffix+'_1.png', dpi=350)
-        # plt.close()
+                                               tgas_data_selected['parsec'], v_xyz_stream, lsr_vel=lsr_vel, to_solar=True)
+        pm_fig, pm_ax = plt.subplots(1, 1)
+        pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
+        pm_ax.scatter(tgas_data_selected['l_gaia'], tgas_data_selected['b_gaia'], lw=0, c='black', s=5)
+        pm_ax.scatter(l_stream, b_stream, lw=0, s=15, c='black', marker='*')
+        pm_ax.quiver(tgas_data_selected['l_gaia'], tgas_data_selected['b_gaia'], tgas_data_selected['pml'],
+                     tgas_data_selected['pmb'],
+                     pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
+        pm_ax.quiver(tgas_data_selected['l_gaia'], tgas_data_selected['b_gaia'],
+                     pmra_stream_predicted, pmdec_stream_predicted,
+                     pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
+        pm_fig.tight_layout()
+        plt.savefig(suffix+'_1.png', dpi=350)
+        plt.close()
 
         # begin analysis
-        stream_obj = STREAM(tgas_data_selected, radiant=[l_stream, b_stream])
+        stream_obj = STREAM(tgas_data_selected, radiant=[l_stream, b_stream], lsr=lsr_vel)
 
         n_MC_dens = 0
         if n_MC_dens > 1:

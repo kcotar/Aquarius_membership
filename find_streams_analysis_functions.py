@@ -38,8 +38,10 @@ def match(i_row):
     obj_ra = np.deg2rad(data_row['l_gaia'])
     obj_dec = np.deg2rad(data_row['b_gaia'])
     obj_parsec = 1e3 / GLOBAL_plx[i_row]
-    pml_stream_predicted = compute_pmra(obj_ra, None, obj_parsec, GLOBAL_stream, lsr_vel=GLOBAL_lsr)
-    pmb_stream_predicted = compute_pmdec(obj_ra, obj_dec, obj_parsec, GLOBAL_stream, lsr_vel=GLOBAL_lsr)
+    pml_stream_predicted = compute_pmra(obj_ra, None, obj_parsec, GLOBAL_stream,
+                                        lsr_vel=GLOBAL_lsr, to_solar=True)
+    pmb_stream_predicted = compute_pmdec(obj_ra, obj_dec, obj_parsec, GLOBAL_stream,
+                                         lsr_vel=GLOBAL_lsr, to_solar=True)
     # covert computed pml/pmb to pmra/pmdec
     l_b_coord = coord.Galactic(l=np.full_like(pml_stream_predicted, obj_ra)*un.deg,
                                b=np.full_like(pml_stream_predicted, obj_dec)*un.deg)
@@ -84,7 +86,7 @@ def observations_match_mc(data, xyz_stream, parallax_mc=None, pmra_mc=None, pmde
         # idx_match = np.logical_and(np.abs(pmdec_stream_predicted - data_row['pmdec']) < (std * data_row['pmdec_error']),
         #                            np.abs(pmra_stream_predicted - data_row['pmra']) < (std * data_row['pmra_error']))
         # n_matches[i_row] = np.sum(idx_match)
-    pool = Pool(processes=10)
+    pool = Pool(processes=16)
     if parallax_mc is not None:
         n_matches = np.array(pool.map(match, range(n_rows)))
     elif pmra_mc is not None and pmdec_mc is not None:
