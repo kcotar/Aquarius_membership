@@ -8,7 +8,7 @@ F = 212.  # (mas/yr)*pc/(km/s)
 # OR maybe even more correct value of this constant
 F = 1./4.74047*1e3
 
-
+# test
 # --------------------------------------------------------
 # ----NOTE: all angle values in the following equations should be transformed to radians prior to the execution of the function
 # --------------------------------------------------------
