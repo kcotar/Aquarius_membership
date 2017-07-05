@@ -438,10 +438,10 @@ class STREAM:
 
     def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False,
                            GUI=False, path='density.png',
-                           grid_size=750, grid_bins=2000):
+                           grid_size=750, grid_bins=2000, recompute=False):
         self.grid_density_size = grid_size
         self.grid_density_bins = grid_bins
-        if self.density_field is None:
+        if self.density_field is None or recompute:
             # compute density field from given stream data
             self._compute_density_field(bandwidth=bandwidth, kernel=kernel, MC=MC)
         fig, ax = plt.subplots(1, 1)

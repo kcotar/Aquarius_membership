@@ -1,5 +1,6 @@
 import imp, os, glob
 import uncertainties.umath as umath
+import pandas as pd
 
 from uncertainties import unumpy
 from astropy.table import Table, join, Column, unique
@@ -242,7 +243,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None  # [[90], [0], [45], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None #[[185], [50], [130], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -251,7 +252,7 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(5, 200, rv_step)
+    rv_range = np.arange(20, 200, rv_step)
     ra_range = np.arange(0, 360, ra_step)
     dec_range = np.arange(-90, 90, dec_step)
     if dist_step is not None:
@@ -267,10 +268,10 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-n_MC = 250
+n_MC = 1000
 parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC)
-pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
-pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
+# pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
+# pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
 
 move_to_dir('Streams_investigation_MC')
 for i_stream in range(n_combinations):
@@ -291,14 +292,23 @@ for i_stream in range(n_combinations):
     rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
                                      v_xyz_stream)
 
-    idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-                                         v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50.)
+    selection_file = suffix + '_obj.txt'
+    if not os.path.exists(selection_file):
+        idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+                                             v_xyz_stream, parallax_mc=parallax_MC, std=-3., percent=50.)
 
-    idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream, std=2.)
+        idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream, std=1.5)
 
-    idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+        idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+        # OR different approach is comparision of velocity vectors itself
 
-    if np.sum(idx_possible) < 10:
+        txt_out = open(selection_file, 'w')
+        txt_out.write(','.join([str(pos) for pos in np.where(idx_possible)[0]]))
+        txt_out.close()
+    else:
+        idx_possible = pd.read_csv(selection_file, header=None, sep=',').values[0]
+
+    if np.sum(idx_possible) < 5:
         os.chdir('..')
         continue
 
@@ -328,15 +338,17 @@ for i_stream in range(n_combinations):
     # begin analysis
     stream_obj = STREAM(tgas_data_selected, radiant=[ra_stream, dec_stream])
 
+    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix + '_2.png', MC=False, GUI=False)
+
     stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
 
-    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2.png', MC=True, GUI=False)
+    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
 
-    for samples in list([10, 25, 40]):
-        for eps in list([10, 14, 18]):
-            out_name = suffix+'_3_s{:2.0f}_e{:2.0f}'.format(samples, eps)
-            stream_obj.show_dbscan_field(samples=samples, eps=eps, GUI=False, peaks=True, path=out_name+'.png')
-            stream_obj.evaluate_dbscan_field(MC=True, path=out_name+'.txt')
+    # for samples in list([10, 25, 40]):
+    #     for eps in list([10, 14, 18]):
+    #         out_name = suffix+'_3_s{:2.0f}_e{:2.0f}'.format(samples, eps)
+    #         stream_obj.show_dbscan_field(samples=samples, eps=eps, GUI=False, peaks=True, path=out_name+'.png')
+    #         stream_obj.evaluate_dbscan_field(MC=True, path=out_name+'.txt')
 
     os.chdir('..')
 

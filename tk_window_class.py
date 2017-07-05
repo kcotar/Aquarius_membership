@@ -34,12 +34,12 @@ class TkWindow:
         self.rv_stream = 45.
 
         # first step analysis variables
-        self.parallax_MC_n = 250
+        self.parallax_MC_n = 500
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
-        self.std_pm = 3.
-        self.std_rv = 2.
+        self.std_pm = -3.
+        self.std_rv = 1.5
         self.set_mc_match_percent = 50.
         self.std_control_visible = False
 
@@ -440,7 +440,8 @@ class TkWindow:
                                                              kernel=self.den_kernel_entry.get(),
                                                              MC=False, GUI=True, peaks=True,
                                                              # MC should always be disabled for this
-                                                             grid_size=xyz_grid_range, grid_bins=xyz_grid_bins)
+                                                             grid_size=xyz_grid_range, grid_bins=xyz_grid_bins,
+                                                             recompute=True)
 
             def callback(event):
                 x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
