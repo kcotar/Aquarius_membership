@@ -256,9 +256,9 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(5, 100, rv_step)
-    ra_range = np.arange(20, 360, ra_step)
-    dec_range = np.arange(5, 90, dec_step)
+    rv_range = np.arange(15, 135, rv_step)
+    ra_range = np.arange(45, 220, ra_step)
+    dec_range = np.arange(5, 55, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -272,20 +272,21 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-n_MC_sel = 250
-parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC_sel)
-# pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC_sel)
-# pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC_sel)
+n_MC_sel = 500
+# parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC_sel)
+pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC_sel)
+pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC_sel)
 
-move_to_dir('Streams_investigation_tests_lb')
+move_to_dir('Streams_investigation_tests_lb_nolsr_parallax')
 # manual stream combinations
-n_combinations = 2
-ra_combinations = [206.98913108, 206.98913108]
-dec_combinations = [-11.42449097, -11.42449097]
-rv_combinations = [45, -45]
+# n_combinations = 2
+# ra_combinations = [206.98913108, 206.98913108]
+# dec_combinations = [-11.42449097, -11.42449097]
+# rv_combinations = [45, -45]
 
 # velocity of the Sun relative to the local disk
 lsr_vel = np.array([10., 5.25, 7.17])  # km/s
+lsr_vel = None
 
 # convert Gaia (or any other) coordinates from sky coordinates ra/dec to galactic l/b
 ra_dec_coord = coord.ICRS(ra=tgas_data['ra_gaia']*un.deg, dec=tgas_data['dec_gaia']*un.deg)
@@ -294,7 +295,7 @@ tgas_data['l_gaia'] = l_b_coord.l.value
 tgas_data['b_gaia'] = l_b_coord.b.value
 # convert Gaia (or any other) proper motion from sky coordinates ra/dec to galactic l/b
 ra_dec_pm = np.vstack((tgas_data['pmra'], tgas_data['pmdec'])) * un.mas/un.yr  # must be of shape (2,N)
-l_b_pm = gal_coord.pm_gal_to_icrs(ra_dec_coord, ra_dec_pm)
+l_b_pm = gal_coord.pm_icrs_to_gal(ra_dec_coord, ra_dec_pm)
 tgas_data['pml'] = l_b_pm[0].value
 tgas_data['pmb'] = l_b_pm[1].value
 
@@ -326,8 +327,14 @@ for i_stream in range(n_combinations):
         selection_file = suffix+'_obj.txt'
         if not os.path.exists(selection_file):
             # standard method 1 from gui
-            idx_pm_match = observations_match_mc(tgas_data['l_gaia', 'b_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-                                                 v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50., lsr_vel=lsr_vel)
+            # idx_pm_match = observations_match_mc(tgas_data['l_gaia', 'b_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+            #                                      v_xyz_stream, parallax_mc=parallax_MC, std=3., percent=50.,
+            #                                      lsr_vel=lsr_vel, n_cpu=1)
+            # standard method 2 from gui
+            idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'l_gaia', 'b_gaia', 'parallax', 'parallax_error'],
+                                                 v_xyz_stream, pmra_mc=pmra_MC, pmdec_mc=pmdec_MC, std=3., percent=50,
+                                                 lsr_vel=lsr_vel, n_cpu=20)
+
             idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream_predicted, std=2.)
             idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
             # OR different approach is comparision of velocity vectors itself
@@ -336,7 +343,7 @@ for i_stream in range(n_combinations):
             txt_out.write(','.join([str(pos) for pos in np.where(idx_possible)[0]]))
             txt_out.close()
         else:
-            idx_possible = pd.read_csv(selection_file, header=None, sep=',')[0]
+            idx_possible = pd.read_csv(selection_file, header=None, sep=',').values[0]
 
         if np.sum(idx_possible) < 10:
             os.chdir('..')
@@ -367,7 +374,7 @@ for i_stream in range(n_combinations):
         # begin analysis
         stream_obj = STREAM(tgas_data_selected, radiant=[l_stream, b_stream], lsr=lsr_vel)
 
-        n_MC_dens = 0
+        n_MC_dens = 25
         if n_MC_dens > 1:
             MC_set = True
             stream_obj.monte_carlo_simulation(samples=n_MC_dens, distribution='normal')

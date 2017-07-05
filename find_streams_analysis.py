@@ -30,9 +30,9 @@ class STREAM:
         self.input_data = Table(data)  # it will create new instace of the data
         # correct values for the lsr movement if given
         if self.lsr is not None:
-            self.input_data['pml'] += pmra_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
-            self.input_data['pmb'] += pmdec_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
-            self.input_data['RV'] += rv_lsr_corr(np.deg2rad(self.input_data['l']), np.deg2rad(self.input_data['l']), self.lsr)
+            self.input_data['pml'] += pmra_lsr_corr(np.deg2rad(self.input_data['l_gaia']), np.deg2rad(self.input_data['b_gaia']), self.lsr)
+            self.input_data['pmb'] += pmdec_lsr_corr(np.deg2rad(self.input_data['l_gaia']), np.deg2rad(self.input_data['b_gaia']), self.lsr)
+            self.input_data['RV'] += rv_lsr_corr(np.deg2rad(self.input_data['l_gaia']), np.deg2rad(self.input_data['b_gaia']), self.lsr)
 
         # add unique id to input rows
         self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
@@ -40,12 +40,12 @@ class STREAM:
         # transform coordinates in cartesian coordinate system
         self.cartesian = coord.Galactic(l=self.input_data['l_gaia'] * un.deg,
                                         b=self.input_data['b_gaia'] * un.deg,
-                                        distance=self.input_data['parsec'] * un.pc).trasform_to(coord.Galactocentric)
-                                        # or .cartesian or .trasform_to(coord.Galactocentric)
+                                        distance=self.input_data['parsec'] * un.pc).cartesian
+                                        # or .cartesian or .transform_to(coord.Galactocentric)
         if self.radiant is not None:
             self.radiant_cartesian = coord.Galactic(l=radiant[0]*un.deg,
                                                     b=radiant[1]*un.deg,
-                                                    distance=3000).trasform_to(coord.Galactocentric)
+                                                    distance=3000*un.pc).cartesian
         # prepare labels that will be used later on
         # Coordinate system rotation not needed any more
         # if radiant is not None:
@@ -144,7 +144,7 @@ class STREAM:
                 print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
             temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
                                names=np.hstack((cols_const, cols_MC)).flatten(),
-                               dtype=['S32', 'i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
+                               dtype=['S32', 'i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
             data_row = self.input_data[i_r]
             for i_c in range(n_cols_MC):
                 col = cols_MC[i_c]
@@ -176,18 +176,18 @@ class STREAM:
         #     self.data_MC = self.data_MC[np.logical_not(idx_bad)]
 
         # compote cartesian coordinates od simulated data
-        self.cartesian_MC = coord.Galactic(ra=self.data_MC['l_gaia'] * un.deg,
-                                           dec=self.data_MC['b_gaia'] * un.deg,
-                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).transform_to(coord.Galactocentric)
+        self.cartesian_MC = coord.Galactic(l=self.data_MC['l_gaia'] * un.deg,
+                                           b=self.data_MC['b_gaia'] * un.deg,
+                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).cartesian
 
         # compute pml and pmb values for the newly simulated data
-        l_b_pm = gal_coord.pm_gal_to_icrs(coord.ICRS(ra=self.data_MC['ra_gaia']*un.deg, dec=self.data_MC['dec_gaia']*un.deg),
+        l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.data_MC['ra_gaia']*un.deg, dec=self.data_MC['dec_gaia']*un.deg),
                                           np.vstack((self.data_MC['pmra'], self.data_MC['pmdec'])) * un.mas / un.yr)
         self.data_MC['pml'] = l_b_pm[0].value
         self.data_MC['pmb'] = l_b_pm[1].value
         if self.lsr is not None:
-            self.data_MC['pml'] += pmra_lsr_corr(np.deg2rad(self.data_MC['l']), np.deg2rad(self.data_MC['l']), self.lsr)
-            self.data_MC['pmb'] += pmdec_lsr_corr(np.deg2rad(self.data_MC['l']), np.deg2rad(self.data_MC['l']), self.lsr)
+            self.data_MC['pml'] += pmra_lsr_corr(np.deg2rad(self.data_MC['l_gaia']), np.deg2rad(self.data_MC['b_gaia']), self.lsr)
+            self.data_MC['pmb'] += pmdec_lsr_corr(np.deg2rad(self.data_MC['l_gaia']), np.deg2rad(self.data_MC['b_gaia']), self.lsr)
             # RV was already corrected in the stage of data input
 
         # compute xyz velocities

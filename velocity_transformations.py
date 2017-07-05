@@ -56,7 +56,7 @@ def compute_rv(ra, dec, vel, lsr_vel=None, to_solar=False):
 
 def pmra_lsr_corr(ra, dec, lsr_vel):
     # degrees in radians
-    return -lsr_vel[0]*np.sin(ra) + lsr_vel[0]*np.cos(ra)
+    return -lsr_vel[0]*np.sin(ra) + lsr_vel[1]*np.cos(ra)
 
 
 def compute_pmra(ra, dec, dist, vel, lsr_vel=None, to_solar=False):
@@ -74,8 +74,8 @@ def compute_pmra(ra, dec, dist, vel, lsr_vel=None, to_solar=False):
         if to_solar:
             pmra_vel -= pmra_lsr_corr(ra, dec, lsr_vel)
         else:
-            pmra_vel -= pmra_lsr_corr(ra, dec, lsr_vel)
-    return pmra_vel
+            pmra_vel += pmra_lsr_corr(ra, dec, lsr_vel)
+    return pmra_vel * np.cos(dec)
 
 
 def pmdec_lsr_corr(ra, dec, lsr_vel):
@@ -102,7 +102,7 @@ def compute_pmdec(ra, dec, dist, vel, lsr_vel=None, to_solar=False):
     return pmdec_vel
 
 
-def compute_distance_pmra(ra, dec, pmra, vel, parallax=False):
+def compute_distance_pmra(ra, dec, pmra, vel, parallax=False, lsr_vel=None, to_solar=False):
     """
 
     :param ra:
@@ -111,8 +111,14 @@ def compute_distance_pmra(ra, dec, pmra, vel, parallax=False):
     :param pmra:
     :return:
     """
+    pmra_vel = pmra / np.cos(dec)
+    if lsr_vel is not None:
+        if to_solar:
+            pmra_vel -= - pmra_lsr_corr(ra, dec, lsr_vel)
+        else:
+            pmra_vel += + pmra_lsr_corr(ra, dec, lsr_vel)
     # compute distance in parsecs
-    dist = F / pmra * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
+    dist = F / pmra_vel * (-vel[0] * np.sin(ra) + vel[1] * np.cos(ra))
     if parallax:
         # transform to parallax value if requested
         return 1./dist*1e3
@@ -120,7 +126,7 @@ def compute_distance_pmra(ra, dec, pmra, vel, parallax=False):
         return dist
 
 
-def compute_distance_pmdec(ra, dec, pmdec, vel, parallax=False):
+def compute_distance_pmdec(ra, dec, pmdec, vel, parallax=False, lsr_vel=None, to_solar=False):
     """
 
     :param ra:
@@ -129,8 +135,14 @@ def compute_distance_pmdec(ra, dec, pmdec, vel, parallax=False):
     :param pmra:
     :return:
     """
+    pmdec_vel = pmdec
+    if lsr_vel is not None:
+        if to_solar:
+            pmdec_vel = pmdec - pmdec_lsr_corr(ra, dec, lsr_vel)
+        else:
+            pmdec_vel = pmdec + pmdec_lsr_corr(ra, dec, lsr_vel)
     # compute distance in parsecs
-    dist = F / pmdec * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
+    dist = F / pmdec_vel * (-vel[0] * np.cos(ra) * np.sin(dec) - vel[1] * np.sin(ra) * np.sin(dec) + vel[2] * np.cos(dec))
     if parallax:
         # transform to parallax value if requested
         return 1./dist*1e3
