@@ -138,12 +138,16 @@ class STREAM:
             for i_c in range(n_cols_MC):
                 col = cols_MC[i_c]
                 # fill temp table with randomly generated values
-                if distribution is 'uniform':
-                    temp_table[col] = np.random.uniform(data_row[col] - data_row[col + '_error'],
-                                                        data_row[col] + data_row[col + '_error'], samples)
-                elif distribution in 'normal':
-                    temp_table[col] = np.random.normal(data_row[col], data_row[col + '_error'], samples)
-            # fill temp table with values that are constant for every MC value
+                if data_row[col + '_error'] > 0:
+                    # scale value can be set
+                    if distribution is 'uniform':
+                        temp_table[col] = np.random.uniform(data_row[col] - data_row[col + '_error'],
+                                                            data_row[col] + data_row[col + '_error'], samples)
+                    elif distribution in 'normal':
+                        temp_table[col] = np.random.normal(data_row[col], data_row[col + '_error'], samples)
+                else:
+                    temp_table[col] = data_row[col]
+                # fill temp table with values that are constant for every MC value
             for col in cols_const:
                 temp_table[col] = data_row[col]
             # add created values to the final MC database
@@ -308,7 +312,7 @@ class STREAM:
             star_pos = self.cartesian
             alpha_use = 1.
         if xyz_vel_stream is None:
-            xyz_vel_stream = np.nanmean(star_vel, asxis=0)
+            xyz_vel_stream = np.nanmedian(star_vel, axis=0)
         # compute plane intersects of given dat
         plane_intersects = stream_plane_vector_intersect(star_pos, star_vel, xyz_vel_stream)
         self.plane_intersects_2d = intersects_to_2dplane(plane_intersects, xyz_vel_stream)
