@@ -80,6 +80,7 @@ def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan'
 # --------------------------------------------------------
 TSNE_PERFORM = False
 TSNE_NORM = True
+CLUSTER_ANALYSIS = False
 
 # --------------------------------------------------------
 # ---------------- Read Data -----------------------------
@@ -186,34 +187,39 @@ print 'Number of points after distance limits: ' + str(len(tgas_data))
 # --------------------------------------------------------
 # ---------------- Known clusters - STREAM class test ----
 # --------------------------------------------------------
-# # clusters dataset 1
-# # stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
-# # field_id = 'cluster_name'
-# # clusters dataset 2
-# # stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Schmeja_xmatch_2014.csv', format='ascii.csv')
-# # idx_probable = np.logical_and(np.logical_and(stars_cluster_data['Pkin'] > 0.0, stars_cluster_data['PJH'] > 0.0), stars_cluster_data['Ps'] == 1)
-# # stars_cluster_data = stars_cluster_data[idx_probable]
-# # field_id = 'MWSC'
-# # clusters dataset 3
-# # stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Kharachenko_xmatch_2005.csv', format='ascii.csv')
-# # field_id = 'Cluster'
-# # clusters dataset 4
-# stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Dias_xmatch_2014.csv', format='ascii.csv')
-# idx_probable = stars_cluster_data['P'] > 50.0
-# stars_cluster_data = stars_cluster_data[idx_probable]
-# field_id = 'Cluster'
-# star_cluster_ids = set(stars_cluster_data[field_id])
-# for cluster in star_cluster_ids:
-#     cluster_sub = tgas_data[np.in1d(tgas_data['sobject_id'], stars_cluster_data[stars_cluster_data[field_id]==cluster]['sobject_id'])]
-#     if len(cluster_sub) == 0:
-#         continue
-#     print cluster
-#     print cluster_sub['ra_gaia', 'dec_gaia', 'RV', 'pmra', 'pmdec', 'parallax', 'parallax_error', 'pmra_error', 'pmdec_error']
-#     stream_obj = STREAM(cluster_sub)
-#     stream_obj.plot_intersections(path=str(cluster)+'.png', GUI=False)
-#     stream_obj.monte_carlo_simulation(samples=100, distribution='normal')
-#     stream_obj.plot_intersections(path=str(cluster)+'_MC.png', MC=True, GUI=False)
-
+if CLUSTER_ANALYSIS:
+    move_to_dir('Stream_known_clusters_Dias_2014')
+    # clusters dataset 1
+    # stars_cluster_data = Table.read(galah_data_dir+'sobject_clusterstars_1.0.fits')
+    # field_id = 'cluster_name'
+    # clusters dataset 2
+    # stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Schmeja_xmatch_2014.csv', format='ascii.csv')
+    # idx_probable = np.logical_and(np.logical_and(stars_cluster_data['Pkin'] > 0.0, stars_cluster_data['PJH'] > 0.0), stars_cluster_data['Ps'] == 1)
+    # stars_cluster_data = stars_cluster_data[idx_probable]
+    # field_id = 'MWSC'
+    # clusters dataset 3
+    # stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Kharachenko_xmatch_2005.csv', format='ascii.csv')
+    # field_id = 'Cluster'
+    # clusters dataset 4
+    stars_cluster_data = Table.read(galah_data_dir+'galah_clusters_Dias_xmatch_2014.csv', format='ascii.csv')
+    idx_probable = stars_cluster_data['P'] > 50.0
+    idx_probable = np.logical_and(idx_probable, stars_cluster_data['db'] == 0)
+    idx_probable = np.logical_and(idx_probable, stars_cluster_data['of'] == 0)
+    stars_cluster_data = stars_cluster_data[idx_probable]
+    field_id = 'Cluster'
+    # end of datasets
+    star_cluster_ids = set(stars_cluster_data[field_id])
+    for cluster in star_cluster_ids:
+        cluster_sub = tgas_data[np.in1d(tgas_data['sobject_id'], stars_cluster_data[stars_cluster_data[field_id]==cluster]['sobject_id'])]
+        if len(cluster_sub) == 0:
+            continue
+        print cluster
+        print cluster_sub['ra_gaia', 'dec_gaia', 'RV', 'pmra', 'pmdec', 'parallax', 'parallax_error', 'pmra_error', 'pmdec_error']
+        stream_obj = STREAM(cluster_sub)
+        stream_obj.plot_intersections(path=str(cluster)+'.png', GUI=False)
+        stream_obj.monte_carlo_simulation(samples=100, distribution='normal')
+        stream_obj.plot_intersections(path=str(cluster)+'_MC.png', MC=True, GUI=False)
+    os.chdir('..')
 
 if TSNE_PERFORM:
     perp = 80
@@ -259,7 +265,7 @@ parsec_thr = 10.
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None #[[185], [50], [130], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None  # [[90], [0], [45], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -289,7 +295,7 @@ parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC
 # pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
 # pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
 
-move_to_dir('Streams_investigation_MC_fulldataset')
+move_to_dir('Streams_investigation_MC_density_analysis')
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -310,14 +316,14 @@ for i_stream in range(n_combinations):
 
     selection_file = suffix + '_obj.txt'
     if not os.path.exists(selection_file):
-        # idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-        #                                      v_xyz_stream, parallax_mc=parallax_MC, std=-3., percent=50.)
-        #
-        # idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream, std=1.5)
-        #
-        # idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+        idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+                                             v_xyz_stream, parallax_mc=parallax_MC, std=-3., percent=50.)
+
+        idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream_predicted, std=1.5)
+        print np.sum(idx_rv_match)
+        idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
         # OR different approach is comparision of velocity vectors itself
-        idx_possible = tgas_data['RV_error'] > 0.
+        # idx_possible = tgas_data['RV_error'] > 0.
 
         txt_out = open(selection_file, 'w')
         txt_out.write(','.join([str(pos) for pos in np.where(idx_possible)[0]]))
@@ -355,11 +361,20 @@ for i_stream in range(n_combinations):
     # begin analysis
     stream_obj = STREAM(tgas_data_selected, radiant=[ra_stream, dec_stream])
 
-    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix + '_2.png', MC=False, GUI=False)
+    # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix + '_2.png', MC=False, GUI=False)
 
-    # stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
-    #
-    # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
+    stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
+
+    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
+
+    peaks_txt = 'analysis_peaks_results.txt'
+    txt_o = open(peaks_txt, 'a')
+    txt_o.write('\n\n\n')
+    txt_o.write(suffix+'\n')
+    txt_o.close()
+    stream_obj.show_density_field(bandwidth=30., kernel='epanechnikov', MC=True, peaks=True, analyze_peaks=True,
+                                  GUI=False, path=suffix+'_3_MC.png',
+                                  grid_size=750, grid_bins=2000, recompute=False, txt_out=peaks_txt)
 
     # for samples in list([10, 25, 40]):
     #     for eps in list([10, 14, 18]):

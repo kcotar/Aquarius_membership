@@ -9,9 +9,11 @@ from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
-from scipy.ndimage import extrema as ndimage_extream
 from skimage.feature import peak_local_max
+from scipy.ndimage import watershed_ift
+from skimage.morphology import watershed
 from vector_plane_calculations import *
+
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
@@ -51,6 +53,7 @@ class STREAM:
         # store results of monte carlo simulation
         self.xyz_vel_MC = None
         self.data_MC = None
+        self.n_samples_MC = None
         self.cartesian_MC = None
         self.cartesian_rotated_MC = None
         # clusters analysis
@@ -120,6 +123,7 @@ class STREAM:
         """
         # remove possible results from previous mc simulation
         self.data_MC = None
+        self.n_samples_MC = samples
         # create new dataset based on original data considering measurement errors using monte carlo approach
         n_input_rows = len(self.input_data)
         # n_MC_rows = n_input_rows * samples
@@ -427,21 +431,21 @@ class STREAM:
         # start actual computation of peaks
         # _, max = ndimage_extream(self.density_field)
         print 'Computing local density peaks'
-        self.density_peaks = peak_local_max(self.density_field, min_distance=25, num_peaks=25,
+        self.density_peaks = peak_local_max(self.density_field, min_distance=2.*self.density_bandwith, num_peaks=10,
                                             threshold_abs=1., threshold_rel=None)
 
     def get_nearest_density_peak(self, x_img=None, y_img=None):
         if x_img is None or y_img is None:
-            print 'Cannot compute nearest peak possition'
+            print 'Cannot compute nearest peak position'
             return None, None
         else:
             idx_peak = np.argmin(np.sqrt((self.density_peaks[:, 1] - x_img)**2 + (self.density_peaks[:, 0] - y_img)**2))
-            x_peak = 1.* self.density_peaks[idx_peak, 1] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
-            y_peak = 1.* self.density_peaks[idx_peak, 0] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
+            x_peak = 1. * self.density_peaks[idx_peak, 1] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
+            y_peak = 1. * self.density_peaks[idx_peak, 0] / self.grid_density_bins * (2 * self.grid_density_size) - self.grid_density_size
             return x_peak, y_peak
 
-    def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False,
-                           GUI=False, path='density.png',
+    def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False, analyze_peaks=False,
+                           GUI=False, path='density.png', txt_out=None, 
                            grid_size=750, grid_bins=2000, recompute=False):
         self.grid_density_size = grid_size
         self.grid_density_bins = grid_bins
@@ -450,11 +454,15 @@ class STREAM:
             self._compute_density_field(bandwidth=bandwidth, kernel=kernel, MC=MC)
         fig, ax = plt.subplots(1, 1)
         im_ax = ax.imshow(self.density_field, interpolation=None, cmap='seismic',
-                          origin='lower', vmin=0., vmax=4.)
+                          origin='lower', vmin=0.)#, vmax=4.)
         if peaks:
             # determine peaks in density field
             self._compute_density_field_peaks()
             ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
+            if analyze_peaks:
+                for i_pe in range(len(self.density_peaks[:, 1])):
+                            self.show_density_selection(x_img=self.density_peaks[i_pe, 1], y_img=self.density_peaks[i_pe, 0],
+                                                        xyz_stream=None, MC=MC, GUI=GUI, path=None, txt_out=txt_out)
         fig.colorbar(im_ax)
         ax.set_axis_off()
         fig.tight_layout()
@@ -468,24 +476,49 @@ class STREAM:
         plt.close()
 
     def show_density_selection(self, x_img=None, y_img=None, xyz_stream=None,
-                               MC=False, GUI=False, path='density_selection.png'):
+                               MC=False, GUI=False, path='density_selection.png', txt_out=None):
         # first get nearest peak coordinates from image to x' y' coordinates
         x_peak, y_peak = self.get_nearest_density_peak(x_img, y_img)
+
         # determine objects that lie in the vicinity of the peak
-        idx_in_selection = np.sqrt((self.cartesian_rotated.x.value - x_peak)**2 + (self.cartesian_rotated.y.value - y_peak)**2) < self.density_bandwith
+        vicinity_range = self.density_bandwith #* 2.
+        # correct vicinity range for the distance from the sun, twince larger at 1kp
+        vicinity_range *= 1. + np.sqrt(x_peak**2 + y_peak**2)/1000.
+        #
+        idx_in_selection = np.sqrt((self.plane_intersects_2d[:, 0] - x_peak) ** 2 +
+                                   (self.plane_intersects_2d[:, 1] - y_peak) ** 2) < vicinity_range
+        if MC:
+            id_uniq_val, id_uniq_count = np.unique(self.data_MC['id_uniq'][idx_in_selection], return_counts=True)
+            # determine probability of selection for every id_uniq
+            id_uniq_prob = 1. * id_uniq_count/self.n_samples_MC
+            # probability that all MC created samples lie in vicinity
+            # print id_uniq_prob
+            possible_members = id_uniq_val[id_uniq_prob > 0.75]
+            # print possible_members
+            # plot_data = self.xyz_vel_MC[idx_in_selection]
+            idx_in_selection = np.in1d(self.input_data['id_uniq'], possible_members)
+            # print np.where(idx_in_selection)
+
         n_in_range = np.sum(idx_in_selection)
         print n_in_range
         if n_in_range <= 0:
-            print 'No object in selection'
+            print 'No viable object in selection'
             return None
 
-        if MC:
-            uniq_id_selected = self.input_data['id_uniq'][idx_in_selection]
-            idx_selection_MC = np.in1d(self.data_MC['id_uniq'], uniq_id_selected)
-            plot_data = self.xyz_vel_MC[idx_selection_MC]
+        input_data_selection = self.input_data['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia', 'RV','pmra','pmdec','parallax'][idx_in_selection]
+        if txt_out is not None:
+            txt_w = open(txt_out, 'a')
+            txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
+            txt_w.write(str(input_data_selection))
+            txt_w.write('\n\n')
+            txt_w.close()
         else:
-            plot_data = self.xyz_vel[idx_in_selection]
+            print input_data_selection
 
+        if GUI is not True and path is None:
+            return None
+
+        plot_data = self.xyz_vel[idx_in_selection]
         plot_range = 10
         stream_center = xyz_stream
         labels = ['X', 'Y', 'Z']
@@ -588,3 +621,23 @@ class STREAM:
             txt_out.close()
 
 
+# WATERSHED TEST ON DENSITY IMAGE
+# from scipy import ndimage as ndi
+# local_maxi = peak_local_max(self.density_field, indices=False, min_distance=2.*self.density_bandwith, num_peaks=10,
+#                                     threshold_abs=1., threshold_rel=None)
+# markers = ndi.label(local_maxi)[0]
+# markers = np.zeros_like(self.density_field)
+# for i_m in range(len(self.density_peaks[:, 1])):
+#     print i_m
+#     markers[self.density_peaks[i_m, 1], self.density_peaks[i_m, 0]] = i_m + 1  # initial markers
+# markers[0, 0] = i_m+1
+# markers[0, -1] = i_m + 1
+# markers[-1, 0] = i_m + 1
+# markers[-1, -1] = i_m + 1
+# watershed_img = watershed_ift(np.uint16(self.density_field*100), np.int16(markers))
+# print watershed_img
+# print np.min(markers), np.max(markers)
+# print np.min(watershed_img), np.max(watershed_img)
+# for i_m in range(1,11):
+#     print np.sum(watershed_img == i_m)
+# im_ax = ax.imshow(watershed_img, interpolation=None, cmap='seismic', origin='lower', vmin=1.)

@@ -238,7 +238,6 @@ class TkWindow:
         # # selection based on RV observation
         idx_rv_match = match_values_within_std(self.input_data['RV'], self.input_data['RV_error'],
                                                self.rv_stream_predicted, std=self.std_rv)
-
         # first final selection
         self.idx_possible_1 = np.logical_and(idx_pm_match, idx_rv_match)
         # plot selection
