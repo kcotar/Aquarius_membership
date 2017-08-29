@@ -21,8 +21,13 @@ def match_values_within_std(obs, obs_error, model, std=1.):
 
 
 def match_values_probability(obs, obs_error, model, log_prob=-3.):
-    model_pdf = norm.pdf(model, loc=obs, scale=obs_error)
-    return np.log(np.sum(model_pdf)/model.size) >= log_prob
+    model_logpdf = norm.logpdf(model, loc=obs, scale=obs_error)
+    log_like = np.sum(model_logpdf) / len(model)
+    # TODO: possible solution, determine log_prob from log_like histogram
+    return log_like >= log_prob
+    # likelihood ration test
+    # TODO: if it will be needed
+    # ratio = 2*ln(log_observed_model/log_reference_model)
 
 
 def match2(i_row):
@@ -73,6 +78,14 @@ def observations_match_mc(data, xyz_stream, parallax_mc=None, pmra_mc=None, pmde
     # n_matches = np.ndarray(n_rows)
     # for i_row in range(n_rows):
     #     n_matches[i_row] = match(i_row)
+    # import matplotlib.pyplot as plt
+    # print n_matches
+    # plt.hist(n_matches[:, 0], bins=150, range=(-20,10))
+    # plt.show()
+    # plt.close()
+    # plt.hist(n_matches[:, 1], bins=150, range=(-20,10))
+    # plt.show()
+    # plt.close()
 
     pool = Pool(processes=16)
     if parallax_mc is not None:

@@ -94,7 +94,7 @@ out_file_fits = 'RAVE_GALAH_TGAS_stack.fits'
 if os.path.isfile(out_file_fits):
     tgas_data = Table.read(out_file_fits)
 else:
-    galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.csv')
+    galah_param = Table.read(galah_data_dir+'sobject_iraf_52_reduced.fits')
     galah_tgas_xmatch = Table.read(galah_data_dir+'galah_tgas_xmatch.csv')
     rave_param = Table.read(rave_data_dir+'RAVE_DR5.fits')
     rave_tgas = Table.read(rave_data_dir+'RAVE_TGAS.fits')
@@ -251,9 +251,9 @@ if TSNE_PERFORM:
 # de_stream = np.deg2rad(13.)  # delta - DEC
 
 # stream search criteria
-rv_step = 10.  # km/s, rv in the radiant of the stream
-ra_step = 10.  # deg
-dec_step = 10.  # deg
+rv_step = 5.  # km/s, rv in the radiant of the stream
+ra_step = 5.  # deg
+dec_step = 5.  # deg
 dist_step = None  # 200  # pc
 
 # results thresholds in percent from theoretical value
@@ -274,7 +274,7 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(20, 200, rv_step)
+    rv_range = np.arange(10, 110, rv_step)
     ra_range = np.arange(0, 360, ra_step)
     dec_range = np.arange(-90, 90, dec_step)
     if dist_step is not None:
@@ -302,6 +302,10 @@ for i_stream in range(n_combinations):
     rv_stream = rv_combinations[i_stream]
     # dist_stream = dist_combinations[i_stream]
 
+    # check for repeated stream conditions at poles
+    if (dec_stream == 90. or dec_stream == -90.) and ra_stream > 0.:
+        continue
+
     move_to_dir(str(rv_stream))
 
     suffix = 'stream_ra_{:05.1f}_dec_{:04.1f}_rv_{:05.1f}'.format(ra_stream, dec_stream, rv_stream)
@@ -317,11 +321,12 @@ for i_stream in range(n_combinations):
     selection_file = suffix + '_obj.txt'
     if not os.path.exists(selection_file):
         idx_pm_match = observations_match_mc(tgas_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
-                                             v_xyz_stream, parallax_mc=parallax_MC, std=-3., percent=50.)
-
-        idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream_predicted, std=1.5)
-        print np.sum(idx_rv_match)
+                                             v_xyz_stream, parallax_mc=parallax_MC, std=-6.)
+        print 'PM matched: '+str(np.sum(idx_pm_match))
+        idx_rv_match = match_values_within_std(tgas_data['RV'], tgas_data['RV_error'], rv_stream_predicted, std=2.)
+        print 'RV matched: ' + str(np.sum(idx_rv_match))
         idx_possible = np.logical_and(idx_pm_match, idx_rv_match)
+        print 'Together  : ' + str(np.sum(idx_possible))
         # OR different approach is comparision of velocity vectors itself
         # idx_possible = tgas_data['RV_error'] > 0.
 

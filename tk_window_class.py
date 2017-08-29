@@ -38,8 +38,8 @@ class TkWindow:
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
-        self.std_pm = -3.
-        self.std_rv = 1.5
+        self.std_pm = -6.
+        self.std_rv = 2
         self.set_mc_match_percent = 50.
         self.std_control_visible = False
 

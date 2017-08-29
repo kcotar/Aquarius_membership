@@ -481,9 +481,9 @@ class STREAM:
         x_peak, y_peak = self.get_nearest_density_peak(x_img, y_img)
 
         # determine objects that lie in the vicinity of the peak
-        vicinity_range = self.density_bandwith #* 2.
-        # correct vicinity range for the distance from the sun, twince larger at 1kp
-        vicinity_range *= 1. + np.sqrt(x_peak**2 + y_peak**2)/1000.
+        vicinity_range = self.density_bandwith  # * 2.
+        # correct vicinity range for the distance from the sun, tipple size at 1kp
+        vicinity_range *= 1. + 2.*np.sqrt(x_peak**2 + y_peak**2)/1000.
         #
         idx_in_selection = np.sqrt((self.plane_intersects_2d[:, 0] - x_peak) ** 2 +
                                    (self.plane_intersects_2d[:, 1] - y_peak) ** 2) < vicinity_range
@@ -493,7 +493,7 @@ class STREAM:
             id_uniq_prob = 1. * id_uniq_count/self.n_samples_MC
             # probability that all MC created samples lie in vicinity
             # print id_uniq_prob
-            possible_members = id_uniq_val[id_uniq_prob > 0.75]
+            possible_members = id_uniq_val[id_uniq_prob > 0.68]
             # print possible_members
             # plot_data = self.xyz_vel_MC[idx_in_selection]
             idx_in_selection = np.in1d(self.input_data['id_uniq'], possible_members)
@@ -506,14 +506,16 @@ class STREAM:
             return None
 
         input_data_selection = self.input_data['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia', 'RV','pmra','pmdec','parallax'][idx_in_selection]
-        if txt_out is not None:
-            txt_w = open(txt_out, 'a')
-            txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
-            txt_w.write(str(input_data_selection))
-            txt_w.write('\n\n')
-            txt_w.close()
-        else:
-            print input_data_selection
+        if n_in_range > 1:
+            # output only significant congestions with at least two memebers
+            if txt_out is not None:
+                txt_w = open(txt_out, 'a')
+                txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
+                txt_w.write(str(input_data_selection))
+                txt_w.write('\n\n')
+                txt_w.close()
+            else:
+                print input_data_selection
 
         if GUI is not True and path is None:
             return None
