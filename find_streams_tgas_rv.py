@@ -81,6 +81,7 @@ def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan'
 TSNE_PERFORM = False
 TSNE_NORM = True
 CLUSTER_ANALYSIS = False
+SKIPP_ANALYSED = True
 
 # --------------------------------------------------------
 # ---------------- Read Data -----------------------------
@@ -276,7 +277,7 @@ if manual_stream_radiants is not None:
 else:
     rv_range = np.arange(10, 110, rv_step)
     ra_range = np.arange(0, 360, ra_step)
-    dec_range = np.arange(-90, 90, dec_step)
+    dec_range = np.arange(5, 90, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -334,6 +335,9 @@ for i_stream in range(n_combinations):
         txt_out.write(','.join([str(pos) for pos in np.where(idx_possible)[0]]))
         txt_out.close()
     else:
+        if SKIPP_ANALYSED:
+            print 'Skipping, already analyzed.'
+            continue
         idx_possible = pd.read_csv(selection_file, header=None, sep=',').values[0]
 
     if np.sum(idx_possible) < 5:

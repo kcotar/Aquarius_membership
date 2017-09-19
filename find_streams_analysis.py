@@ -516,6 +516,7 @@ class STREAM:
                 txt_w.close()
             else:
                 print input_data_selection
+            print self.input_data['sobject_id', 'RAVE_OBS_ID', 'M_H'][idx_in_selection]
 
         if GUI is not True and path is None:
             return None
@@ -533,7 +534,7 @@ class STREAM:
             i_x = plot_comb[i_c][0]
             i_y = plot_comb[i_c][1]
             if MC:
-                alpha_use = 0.2
+                alpha_use = 1.
             else:
                 alpha_use = 1.
             if stream_center is not None:

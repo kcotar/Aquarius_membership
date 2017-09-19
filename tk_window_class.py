@@ -34,12 +34,12 @@ class TkWindow:
         self.rv_stream = 45.
 
         # first step analysis variables
-        self.parallax_MC_n = 500
+        self.parallax_MC_n = 1000
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
         self.std_pm = -6.
-        self.std_rv = 2
+        self.std_rv = 2.
         self.set_mc_match_percent = 50.
         self.std_control_visible = False
 
