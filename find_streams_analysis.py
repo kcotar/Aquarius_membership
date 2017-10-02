@@ -20,7 +20,7 @@ from veltrans import *
 
 
 class STREAM:
-    def __init__(self, data, radiant=None):
+    def __init__(self, data, radiant=None, to_galactic=False):
         """
 
         :param data:
@@ -31,9 +31,13 @@ class STREAM:
         self.input_data.add_column(Column(data=['u_'+str(i_d) for i_d in range(len(data))], name='id_uniq', dtype='S32'))
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
-        self.cartesian = coord.SkyCoord(ra=self.input_data['ra_gaia'] * un.deg,
-                                        dec=self.input_data['dec_gaia'] * un.deg,
-                                        distance=self.input_data['parsec'] * un.pc).cartesian
+        self.to_galactic = to_galactic
+        input_coord = coord.SkyCoord(ra=self.input_data['ra_gaia'] * un.deg,
+                                     dec=self.input_data['dec_gaia'] * un.deg,
+                                     distance=self.input_data['parsec'] * un.pc)
+        if self.to_galactic:
+            input_coord = input_coord.transform_to(coord.Galactic)
+        self.cartesian = input_coord.cartesian
         if self.radiant is not None:
             self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
                                                     dec=radiant[1]*un.deg,

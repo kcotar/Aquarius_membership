@@ -277,7 +277,7 @@ if manual_stream_radiants is not None:
 else:
     rv_range = np.arange(10, 110, rv_step)
     ra_range = np.arange(0, 360, ra_step)
-    dec_range = np.arange(5, 90, dec_step)
+    dec_range = np.arange(35, 90, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -337,6 +337,7 @@ for i_stream in range(n_combinations):
     else:
         if SKIPP_ANALYSED:
             print 'Skipping, already analyzed.'
+            os.chdir('..')
             continue
         idx_possible = pd.read_csv(selection_file, header=None, sep=',').values[0]
 

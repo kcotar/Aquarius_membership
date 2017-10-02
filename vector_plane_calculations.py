@@ -46,7 +46,11 @@ def stream_plane_vector_intersect(xyz_stars_c, xyz_vel_stars, xyz_vel_stream):
     :param xyz_vel_stream: stream velocity array(3) in cartesian coordinate system
     :return:
     """
-    xyz_stars = _transform_cartesian_coord_to_array(xyz_stars_c)
+    # check if star position are given as ndarray or astropy.coordinates that has to be converted into ndarray
+    if str(type(xyz_stars_c)) == "<type 'numpy.ndarray'>":
+        xyz_stars = np.array(xyz_stars_c)
+    else:
+        xyz_stars = _transform_cartesian_coord_to_array(xyz_stars_c)
     # some quick checks
     if xyz_stars.shape != xyz_vel_stars.shape:
         raise ArithmeticError('Stars arrays have different sizes.')
