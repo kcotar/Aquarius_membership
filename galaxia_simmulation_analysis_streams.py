@@ -20,9 +20,15 @@ from velocity_transformations import *
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir
 
-simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/GALAH/'
+
+# GALAH
+# simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/GALAH/'
 # simulation_ebf = 'galaxy_galah_complete.ebf'
-simulation_ebf = 'galaxy_galah_fields.ebf'
+# simulation_ebf = 'galaxy_galah_fields.ebf'
+# RAVE
+simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/RAVE/'
+simulation_ebf = 'galaxy_rave_complete.ebf'
+# out fits
 simulation_fits = simulation_ebf.split('.')[0]+'.fits'
 output_dir = ''
 
@@ -69,7 +75,7 @@ dec_step = 10.  # deg
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None  # [[0,90,180,270], [0,0,0,0], [40,40,40,40], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = [[90], [0], [45], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -87,6 +93,19 @@ else:
     rv_combinations = stream_mesh[2].flatten()
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
+
+# # transform galactic uvw coordinates to equatorial xyz coordinates
+# coords_new = coord.SkyCoord(u=stars_data['px'], v=stars_data['py'], w=stars_data['pz'], unit='kpc',
+#                             frame='galactic', representation='cartesian').transform_to(coord.ICRS).cartesian
+# veloci_new = coord.SkyCoord(u=stars_data['vx'], v=stars_data['vy'], w=stars_data['vz'], unit='km',
+#                             frame='galactic', representation='cartesian').transform_to(coord.ICRS).cartesian
+#
+# stars_data['px'] = coords_new.x.value
+# stars_data['py'] = coords_new.y.value
+# stars_data['pz'] = coords_new.z.value
+# stars_data['vx'] = veloci_new.x.value
+# stars_data['vy'] = veloci_new.y.value
+# stars_data['vz'] = veloci_new.z.value
 
 move_to_dir('Streams_investigation_'+simulation_ebf.split('.')[0])
 for i_stream in range(n_combinations):
