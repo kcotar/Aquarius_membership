@@ -122,9 +122,9 @@ obs_sub['vx_gal'] = xyz_vel[0]
 obs_sub['vy_gal'] = xyz_vel[1]
 obs_sub['vz_gal'] = xyz_vel[2]
 
-plot_hist(obs_sub, 'u_gal', obs_sub, 'vx_gal', path=None, title='')
-plot_hist(obs_sub, 'v_gal', obs_sub, 'vy_gal', path=None, title='')
-plot_hist(obs_sub, 'w_gal', obs_sub, 'vz_gal', path=None, title='')
+# plot_hist(obs_sub, 'u_gal', obs_sub, 'vx_gal', path=None, title='')
+# plot_hist(obs_sub, 'v_gal', obs_sub, 'vy_gal', path=None, title='')
+# plot_hist(obs_sub, 'w_gal', obs_sub, 'vz_gal', path=None, title='')
 
 plot_hist(obs_sub, 'u_gal', galaxia_sub, 'vx', path=None, title='')
 plot_hist(obs_sub, 'v_gal', galaxia_sub, 'vy', path=None, title='')

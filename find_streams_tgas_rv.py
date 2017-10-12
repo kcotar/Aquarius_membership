@@ -9,6 +9,7 @@ from find_streams_plots import *
 from find_streams_analysis import *
 from find_streams_selection import *
 from find_streams_analysis_functions import *
+from sys import argv
 
 imp.load_source('helper', '../tSNE_test/helper_functions.py')
 from helper import move_to_dir
@@ -75,6 +76,11 @@ def run_tsne(data, norm=False, out_file='tsn_results.fits', distance='manhattan'
     return tsne_final
 
 
+def delete_file(filename):
+    if os.path.exists(filename):
+        os.remove(filename)
+
+
 # --------------------------------------------------------
 # ---------------- Constants and settings ----------------
 # --------------------------------------------------------
@@ -82,6 +88,7 @@ TSNE_PERFORM = False
 TSNE_NORM = True
 CLUSTER_ANALYSIS = False
 SKIPP_ANALYSED = True
+WORK_WITH_GALACTIC_XYZ = True
 
 # --------------------------------------------------------
 # ---------------- Read Data -----------------------------
@@ -90,6 +97,18 @@ SKIPP_ANALYSED = True
 print 'Reading data sets'
 galah_data_dir = '/home/klemen/GALAH_data/'  # the same for gigli and local pc
 rave_data_dir = '/home/klemen/RAVE_data/'
+
+print 'Reading Galaxia simulations'
+# simulations matching GALAH survey
+# simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/GALAH/'
+# simulation_fits = 'galaxy_galah_complete.fits'  # complete all-sky simulation
+# simulation_fits = 'galaxy_galah_fields.fits'  # simulation for the observed fields only
+# simulations matching RAVE survey
+simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/RAVE/'
+# simulation_fits = 'galaxy_rave_complete.fits'
+simulation_fits = 'galaxy_rave_fields.fits'
+# read
+galaxia_data = Table.read(simulation_dir + simulation_fits)
 
 out_file_fits = 'RAVE_GALAH_TGAS_stack.fits'
 if os.path.isfile(out_file_fits):
@@ -253,8 +272,8 @@ if TSNE_PERFORM:
 
 # stream search criteria
 rv_step = 5.  # km/s, rv in the radiant of the stream
-ra_step = 5.  # deg
-dec_step = 5.  # deg
+ra_step = 10.  # deg
+dec_step = 10.  # deg
 dist_step = None  # 200  # pc
 
 # results thresholds in percent from theoretical value
@@ -263,10 +282,20 @@ pmra_thr = 15.
 pmdec_thr = 15.
 parsec_thr = 10.
 
+# selection from terminal
+in_args = argv
+if len(in_args) > 1:
+    rv_selection = float(in_args[1])
+    print ' Input RV selection: '+str(rv_selection)
+else:
+    rv_selection = 10.
+
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
-manual_stream_radiants = None  # [[90], [0], [45], [None]]  # list of ra, dec, rv values
+# manual_stream_radiants = [[20,45,140,240,370], [-10,-30,20,10,50], [45,45,45,45,45], [None]]  # list of ra, dec, rv values
+# manual_stream_radiants = [[90], [0], [45], [None]]  # list of ra, dec, rv values
+manual_stream_radiants = None
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
 if manual_stream_radiants is not None:
@@ -275,9 +304,9 @@ if manual_stream_radiants is not None:
     rv_combinations = manual_stream_radiants[2]
     dist_combinations = manual_stream_radiants[3]
 else:
-    rv_range = np.arange(10, 110, rv_step)
+    rv_range = np.arange(rv_selection, rv_selection+rv_step, rv_step)
     ra_range = np.arange(0, 360, ra_step)
-    dec_range = np.arange(35, 90, dec_step)
+    dec_range = np.arange(-90, 90, dec_step)
     if dist_step is not None:
         dist_range = np.arange(50, 1600, dist_step)
     else:
@@ -291,12 +320,15 @@ else:
 n_combinations = len(ra_combinations)
 print 'Total number of stream combinations that will be evaluated: '+str(n_combinations)
 
-n_MC = 1000
+n_MC = 1500
 parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC)
 # pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
 # pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
 
-move_to_dir('Streams_investigation_MC_density_analysis')
+out_dir = 'Streams_investigation_MC_density_analysis'
+if WORK_WITH_GALACTIC_XYZ:
+    out_dir += '_'+simulation_fits.split('.')[0]
+move_to_dir(out_dir)
 for i_stream in range(n_combinations):
     ra_stream = ra_combinations[i_stream]
     dec_stream = dec_combinations[i_stream]
@@ -313,7 +345,9 @@ for i_stream in range(n_combinations):
     print 'Working on ' + suffix
 
     # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
+    l_b_stream = coord.ICRS(ra=ra_stream * un.deg, dec=dec_stream * un.deg).transform_to(coord.Galactic)
     v_xyz_stream = compute_xyz_vel(np.deg2rad(ra_stream), np.deg2rad(dec_stream), rv_stream)
+    v_xyz_stream_gal = compute_xyz_vel(np.deg2rad(l_b_stream.l.value), np.deg2rad(l_b_stream.b.value), rv_stream)
 
     # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
     rv_stream_predicted = compute_rv(np.deg2rad(tgas_data['ra_gaia']), np.deg2rad(tgas_data['dec_gaia']),
@@ -369,13 +403,16 @@ for i_stream in range(n_combinations):
     plt.close()
 
     # begin analysis
-    stream_obj = STREAM(tgas_data_selected, radiant=[ra_stream, dec_stream])
-
-    # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix + '_2.png', MC=False, GUI=False)
-
-    stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
-
-    stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
+    if WORK_WITH_GALACTIC_XYZ:
+        stream_obj = STREAM(tgas_data_selected, to_galactic=True)
+        stream_obj.monte_carlo_simulation(samples=75, distribution='normal')
+        # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream_gal, path=suffix + '_2.png', MC=False, GUI=False)
+        stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream_gal, path=suffix + '_2_MC.png', MC=True, GUI=False)
+    else:
+        stream_obj = STREAM(tgas_data_selected, to_galactic=False)
+        stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
+        # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2.png', MC=False, GUI=False)
+        stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
 
     peaks_txt = 'analysis_peaks_results.txt'
     txt_o = open(peaks_txt, 'a')
@@ -385,6 +422,20 @@ for i_stream in range(n_combinations):
     stream_obj.show_density_field(bandwidth=30., kernel='epanechnikov', MC=True, peaks=True, analyze_peaks=True,
                                   GUI=False, path=suffix+'_3_MC.png',
                                   grid_size=750, grid_bins=2000, recompute=False, txt_out=peaks_txt)
+
+    peaks_galaxia = 'analysis_peaks_galaxia_compare.txt'
+    if WORK_WITH_GALACTIC_XYZ:
+        if len(stream_obj.meaningful_peaks) > 0:
+            txt_o = open(peaks_galaxia, 'a')
+            txt_o.write('\n\n\n')
+            txt_o.write(suffix + '\n')
+            txt_o.close()
+            stream_obj.compare_with_simulation(galaxia_data, r_vel=10., xyz_stream=v_xyz_stream_gal,
+                                               txt_out=peaks_galaxia, img_path=suffix + '_4.png')
+        else:
+            # delete png plots without any significant information
+            for suf in ['_1', '_2', '_2_MC', '_3_MC']:
+                delete_file(suffix + suf + '.png')
 
     # for samples in list([10, 25, 40]):
     #     for eps in list([10, 14, 18]):

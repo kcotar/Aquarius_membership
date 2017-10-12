@@ -13,14 +13,14 @@ from skimage.feature import peak_local_max
 from scipy.ndimage import watershed_ift
 from skimage.morphology import watershed
 from vector_plane_calculations import *
-
+import gala.coordinates as gal_coord
 
 imp.load_source('veltrans', '../tSNE_test/velocity_transform.py')
 from veltrans import *
 
 
 class STREAM:
-    def __init__(self, data, radiant=None, to_galactic=False):
+    def __init__(self, data, radiant=None, to_galactic=True):
         """
 
         :param data:
@@ -36,12 +36,30 @@ class STREAM:
                                      dec=self.input_data['dec_gaia'] * un.deg,
                                      distance=self.input_data['parsec'] * un.pc)
         if self.to_galactic:
+            # compute pml and pmb
+            ra_dec_pm = np.vstack((self.input_data['pmra'], self.input_data['pmdec'])) * un.mas/un.yr
+            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.input_data['ra_gaia'] * un.deg,
+                                                         dec=self.input_data['dec_gaia'] * un.deg), ra_dec_pm)
+            self.input_data['pml'] = l_b_pm[0].value
+            self.input_data['pmb'] = l_b_pm[1].value
+            # unset values
+            ra_dec_pm = None
+            l_b_pm = None
+            # compute galactic coordinates/positions
             input_coord = input_coord.transform_to(coord.Galactic)
+            self.input_data['l'] = input_coord.l.value
+            self.input_data['b'] = input_coord.b.value
+
         self.cartesian = input_coord.cartesian
         if self.radiant is not None:
-            self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
-                                                    dec=radiant[1]*un.deg,
-                                                    distance=3000).cartesian
+            if self.to_galactic:
+                # TODO: temporary fix for galactic coordinates
+                self.radiant = None
+                self.radiant_cartesian = None
+            else:
+                self.radiant_cartesian = coord.SkyCoord(ra=radiant[0]*un.deg,
+                                                        dec=radiant[1]*un.deg,
+                                                        distance=3000).cartesian
         # prepare labels that will be used later on
         if radiant is not None:
             self._rotate_coordinate_system(MC=False)
@@ -50,9 +68,14 @@ class STREAM:
         self.stream_params = None
         # store galactic and cartesian velocities
         self.uvw_vel = None
-        xyz_vel = motion_to_cartesic(np.array(self.input_data['ra_gaia']), np.array(self.input_data['dec_gaia']),
-                                     np.array(self.input_data['pmra']), np.array(self.input_data['pmdec']),
-                                     np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
+        if self.to_galactic:
+            xyz_vel = motion_to_cartesic(np.array(self.input_data['l']), np.array(self.input_data['b']),
+                                         np.array(self.input_data['pml']), np.array(self.input_data['pmb']),
+                                         np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
+        else:
+            xyz_vel = motion_to_cartesic(np.array(self.input_data['ra_gaia']), np.array(self.input_data['dec_gaia']),
+                                         np.array(self.input_data['pmra']), np.array(self.input_data['pmdec']),
+                                         np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
         self.xyz_vel = np.transpose(xyz_vel)
         # store results of monte carlo simulation
         self.xyz_vel_MC = None
@@ -67,6 +90,7 @@ class STREAM:
         # density field analysis
         self.density_field = None
         self.density_peaks = None
+        self.meaningful_peaks = list([])  # empty list of detected meaningful peaks in the density field
 
     def _rotate_coordinate_system(self, MC=False):
         """
@@ -171,13 +195,35 @@ class STREAM:
         #     print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
         #     self.data_MC = self.data_MC[np.logical_not(idx_bad)]
         # compote cartesian coordinates od simulated data
-        self.cartesian_MC = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
-                                           dec=self.data_MC['dec_gaia'] * un.deg,
-                                           distance=1./self.data_MC['parallax']*1e3 * un.pc).cartesian
+        MC_input_coord = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
+                                        dec=self.data_MC['dec_gaia'] * un.deg,
+                                        distance=1./self.data_MC['parallax']*1e3 * un.pc)
+        if self.to_galactic:
+            # compute pml and pmb
+            ra_dec_pm = np.vstack((self.data_MC['pmra'], self.data_MC['pmdec'])) * un.mas/un.yr
+            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.data_MC['ra_gaia'] * un.deg,
+                                                         dec=self.data_MC['dec_gaia'] * un.deg), ra_dec_pm)
+            self.data_MC['pml'] = l_b_pm[0].value
+            self.data_MC['pmb'] = l_b_pm[1].value
+            # unset values
+            ra_dec_pm = None
+            l_b_pm = None
+            # compute galactic coordinates/positions
+            MC_input_coord = MC_input_coord.transform_to(coord.Galactic)
+            self.data_MC['l'] = MC_input_coord.l.value
+            self.data_MC['b'] = MC_input_coord.b.value
+
+        self.cartesian_MC = MC_input_coord.cartesian
+
         # compute xyz velocities
-        xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
-                                     np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
-                                     np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
+        if self.to_galactic:
+            xyz_vel = motion_to_cartesic(np.array(self.data_MC['l']), np.array(self.data_MC['b']),
+                                         np.array(self.data_MC['pml']), np.array(self.data_MC['pmb']),
+                                         np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
+        else:
+            xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
+                                         np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
+                                         np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
         self.xyz_vel_MC = np.transpose(xyz_vel)
 
     def stream_show(self, path=None, view_pos=None, MC=False):
@@ -420,7 +466,8 @@ class STREAM:
         stars_pos = self._get_density_estimate_data(MC=MC)
         print 'Computing density of stars'
         self.density_bandwith = bandwidth
-        stars_density = KernelDensity(bandwidth=bandwidth, kernel=kernel).fit(stars_pos)
+        self.density_kernel = kernel
+        stars_density = KernelDensity(bandwidth=self.density_bandwith, kernel=self.density_kernel).fit(stars_pos)
         grid_pos = np.linspace(-self.grid_density_size, self.grid_density_size, self.grid_density_bins)
         _x, _y = np.meshgrid(grid_pos, grid_pos)
         print 'Computing density field'
@@ -511,7 +558,10 @@ class STREAM:
 
         input_data_selection = self.input_data['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia', 'RV','pmra','pmdec','parallax'][idx_in_selection]
         if n_in_range > 1:
-            # output only significant congestions with at least two memebers
+            # store result internally only when operating in batch mode
+            if not GUI:
+                self.meaningful_peaks.append([x_peak, y_peak])
+            # output only significant congestions with at least two members
             if txt_out is not None:
                 txt_w = open(txt_out, 'a')
                 txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
@@ -556,6 +606,65 @@ class STREAM:
         else:
             plt.show()
         plt.close()
+
+    def compare_with_simulation(self, sim_data, r_vel=10., xyz_stream=None, txt_out=None, img_path=None):
+        n_m_peaks = len(self.meaningful_peaks)
+        if n_m_peaks <= 0:
+            return
+        idx_close_vel= np.sqrt((sim_data['vx'] - xyz_stream[0]) ** 2 +
+                               (sim_data['vy'] - xyz_stream[1]) ** 2 +
+                               (sim_data['vz'] - xyz_stream[2]) ** 2) < r_vel
+        sim_data_subset = sim_data[idx_close_vel]
+        xyz_pos_stars = np.vstack((sim_data_subset['px'], sim_data_subset['py'], sim_data_subset['pz'])).T * 1000.  # conversion from kpc to pc
+        xyz_vel_stars = np.vstack((sim_data_subset['vx'], sim_data_subset['vy'], sim_data_subset['vz'])).T
+        print ' Computing intersections from simulated data'
+        plane_intersects_3D = stream_plane_vector_intersect(xyz_pos_stars, xyz_vel_stars, xyz_stream)
+        plane_intersects_2D = intersects_to_2dplane(plane_intersects_3D, xyz_stream)
+        if img_path is not None:
+            fig, ax = plt.subplots(1, 1)
+            ax.scatter(plane_intersects_2D[:, 0], plane_intersects_2D[:, 1], lw=0, c='blue', s=2, alpha=0.3)
+            ax.scatter(0, 0, lw=0, c='black', s=10, marker='*')  # solar position
+            ax.set(xlabel='X stream plane', ylabel='Y stream plane', xlim=(-1000,1000), ylim=(-1000,1000))
+            fig.tight_layout()
+            plt.savefig(img_path, dpi=250)
+            plt.close()
+        print ' Density field from simulated intersections'
+        stars_density = KernelDensity(bandwidth=self.density_bandwith, kernel=self.density_kernel).fit(plane_intersects_2D)
+        grid_pos = np.linspace(-self.grid_density_size, self.grid_density_size, self.grid_density_bins)
+        _x, _y = np.meshgrid(grid_pos, grid_pos)
+        density_field = stars_density.score_samples(np.vstack((_x.ravel(), _y.ravel())).T) + np.log(plane_intersects_2D.shape[0])
+        density_field = np.exp(density_field) * 1e3
+
+        # output pretty png image of the density plot
+        fig, ax = plt.subplots(1, 1)
+        im_ax = ax.imshow(density_field.reshape(_x.shape), interpolation=None, cmap='seismic',
+                          origin='lower', vmin=0.)
+        ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
+        fig.colorbar(im_ax)
+        ax.set_axis_off()
+        fig.tight_layout()
+        plt.savefig(img_path[:-4]+'_d.png', dpi=250)
+        plt.close()
+
+        # statistical descriptions of the given field
+        min_d = np.min(density_field)
+        max_d = np.max(density_field)
+        counts_d, bin_d = np.histogram(density_field, bins=100, range=(1e-5, np.percentile(density_field,98)))
+        # analyse peak by peak
+        print ' Analysing simulation density field at peaks in data'
+        for i_p in range(n_m_peaks):
+            x_peak, y_peak = self.meaningful_peaks[i_p]
+            idx_density_pos = np.argmin((_x.ravel()-x_peak)**2 + (_y.ravel()-y_peak)**2)
+            density_mag_peak = density_field[idx_density_pos]
+            n_stars = np.sqrt((plane_intersects_2D[:,0]-x_peak)**2 + (plane_intersects_2D[:,1]-y_peak)**2) < self.density_bandwith
+            n_stars = np.sum(n_stars)
+            if txt_out is not None:
+                txt_w = open(txt_out, 'a')
+                txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
+                txt_w.write(" N sim stars: " + str(n_stars)+" \n")
+                txt_w.write(" Peak mag   : " + str(np.int(100.*(density_mag_peak-min_d)/(max_d-min_d)))+"%"+" \n")
+                txt_w.write('\n')
+                txt_w.close()
 
     def show_dbscan_field(self, samples=10., eps=50, peaks=False, GUI=False, path='density.png'):
         plot_lim = (-1000, 1000)

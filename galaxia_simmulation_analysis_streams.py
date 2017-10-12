@@ -27,7 +27,8 @@ from helper import move_to_dir
 # simulation_ebf = 'galaxy_galah_fields.ebf'
 # RAVE
 simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/RAVE/'
-simulation_ebf = 'galaxy_rave_complete.ebf'
+# simulation_ebf = 'galaxy_rave_complete.ebf'
+simulation_ebf = 'galaxy_rave_fields.ebf'
 # out fits
 simulation_fits = simulation_ebf.split('.')[0]+'.fits'
 output_dir = ''
@@ -64,6 +65,13 @@ else:
     sim_data = None
     stars_data.write(simulation_dir+simulation_fits)
 
+#ra_coord = coord.Galactic(l=stars_data['glon']*un.deg, b=stars_data['glat']*un.deg).transform_to(coord.ICRS)
+plt.scatter(stars_data['glon'], stars_data['glat'], s=1, color='black')
+# plt.scatter(ra_coord.ra.value, ra_coord.dec.value, s=1, color='black')
+plt.show()
+plt.close()
+raise SystemExit
+
 # --------------------------------------------------------
 # ---------------- Stream search parameters --------------
 # --------------------------------------------------------
@@ -75,6 +83,7 @@ dec_step = 10.  # deg
 # --------------------------------------------------------
 # ---------------- Evaluation of possible streams --------
 # --------------------------------------------------------
+manual_stream_radiants = [[20,45,140,240,370,125,20,150], [-10,-30,20,10,50,35,-80,-60], [20,15,35,70,45,55,22,10], [None]]  # list of ra, dec, rv values
 manual_stream_radiants = [[90], [0], [45], [None]]  # list of ra, dec, rv values
 # manual_stream_radiants = parse_selected_streams('Streams_investigation_lower-thr_selected')
 # iterate trough all possible combinations for the initial conditions of the stream (rv, ra, dec)
@@ -186,5 +195,13 @@ for i_stream in range(n_combinations):
     fig.colorbar(im_ax)
     ax.set_axis_off()
     fig.tight_layout()
-    plt.savefig(suffix + '_3.png', dpi=250)
+    # plt.savefig(suffix + '_3.png', dpi=250)
+    plt.show()
     plt.close()
+
+    heights, edges = np.histogram(density_field, bins=100, range=(1e-5, np.percentile(density_field,98)))
+    width = np.abs(edges[0] - edges[1])
+    plt.bar(edges[:-1], heights, width=width, color='green', alpha=0.5)
+    plt.show()
+    plt.close()
+
