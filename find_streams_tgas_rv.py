@@ -410,7 +410,7 @@ for i_stream in range(n_combinations):
         stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream_gal, path=suffix + '_2_MC.png', MC=True, GUI=False)
     else:
         stream_obj = STREAM(tgas_data_selected, to_galactic=False)
-        stream_obj.monte_carlo_simulation(samples=50, distribution='normal')
+        stream_obj.monte_carlo_simulation(samples=75, distribution='normal')
         # stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2.png', MC=False, GUI=False)
         stream_obj.plot_intersections(xyz_vel_stream=v_xyz_stream, path=suffix+'_2_MC.png', MC=True, GUI=False)
 

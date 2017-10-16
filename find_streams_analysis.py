@@ -10,8 +10,11 @@ from sklearn.cluster import DBSCAN
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 from skimage.feature import peak_local_max
+from scipy.signal import find_peaks_cwt, argrelextrema, medfilt
+from scipy.interpolate import splev, splrep
 from scipy.ndimage import watershed_ift
 from skimage.morphology import watershed
+from lmfit import minimize, Parameters, report_fit, Minimizer
 from vector_plane_calculations import *
 import gala.coordinates as gal_coord
 
@@ -735,6 +738,89 @@ class STREAM:
                     print out_str
         if save_output:
             txt_out.close()
+
+    def phase_intersects_analysis(self, GUI=False, path='phase.png', phase_step=2.):
+        # compute phases of intersects
+        phase_ang = np.rad2deg(np.arctan2(self.plane_intersects_2d[:, 0], self.plane_intersects_2d[:, 1]))
+        idx_neg = phase_ang < 0.
+        if np.sum(idx_neg) > 0:
+            phase_ang[idx_neg] += 360.
+
+        # compute distribution of the phases
+        phase_hist, phase_bins = np.histogram(phase_ang, range=(0., 360.), bins=360./phase_step)
+
+        # estimate offset(continuum) from the histogram distribution
+        phase_hist_pos = phase_bins[:-1]+phase_step/2.
+        # chb_coef = np.polynomial.chebyshev.chebfit(phase_hist, phase_hist_pos, 32)
+        # cont_fit = np.polynomial.chebyshev.chebval(phase_hist_pos, chb_coef)
+        spline_coef = splrep(phase_hist_pos, phase_hist, k=1, s=11, per=True)
+        spline_data = splev(phase_hist_pos, spline_coef)
+
+        # do peaks analysis of the phases histogram
+        peaks_min = argrelextrema(phase_hist, np.less, order=4, mode='wrap')[0]
+        peaks_max = argrelextrema(spline_data, np.greater, order=4, mode='wrap')[0]  # as output is tuple even for 1d input
+        # baseline under the peaks of the histogram
+        baseline_coef = splrep(phase_hist_pos[peaks_min], phase_hist[peaks_min], k=4, s=None, per=True)
+        baseline_data = splev(phase_hist_pos, baseline_coef)
+
+        # fit gaussian function(s) to the hist-baseline function
+        def gaussian_fit(parameters, data, wvls, ref_data, evaluate=True):
+            n_keys = (len(parameters)) / 3
+            # function_val = parameters['offset']*np.ones(len(wvls))
+            function_val = np.array(ref_data)
+            for i_k in range(n_keys):
+                function_val -= parameters['amp' + str(i_k)] * np.exp(-0.5 * (parameters['wvl' + str(i_k)] - wvls) ** 2 / parameters['std' + str(i_k)])
+            if evaluate:
+                likelihood = np.power(data - function_val, 2)
+                return likelihood
+            else:
+                return function_val
+
+        fit_param = Parameters()
+        fit_keys = list([])
+        for i_p in range(len(peaks_max)):
+            key_std = 'std' + str(i_p)
+            fit_param.add(key_std, value=1, min=0.1, max=5)
+            fit_keys.append(key_std)
+            key_amp = 'amp' + str(i_p)
+            fit_param.add(key_amp, value=1, min=0.001)
+            fit_keys.append(key_amp)
+            key_wvl = 'wvl' + str(i_p)
+            peak_loc = phase_hist_pos[peaks_max[i_p]]
+            fit_param.add(key_wvl, value=peak_loc, min=peak_loc - 5, max=peak_loc + 5, vary=False)
+            fit_keys.append(key_wvl)
+        fit_res = minimize(gaussian_fit, fit_param, args=(phase_hist, phase_hist_pos, baseline_data))
+        fit_res.params.pretty_print()
+        report_fit(fit_res)
+        fitted_curve = gaussian_fit(fit_res.params, 0., phase_hist_pos, baseline_data, evaluate=False)
+
+        print peaks_max
+        print phase_hist
+        print phase_hist_pos
+        print baseline_data
+
+        # output an plot
+        fig, ax = plt.subplots(1, 1)
+        ax.bar(phase_bins[:-1], phase_hist, width=phase_step, align='edge', lw=0, alpha=0.7, color='black')
+        # for i_p in peaks_min:
+        #     print i_p, phase_bins[i_p]
+        #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='red')
+        # for i_p in peaks_max:
+        #     print i_p, phase_bins[i_p]
+        #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='green')
+        ax.plot(phase_hist_pos, spline_data, lw=0.5, color='blue')
+        ax.plot(phase_hist_pos, baseline_data, lw=0.5, color='green')
+        ax.plot(phase_hist_pos, fitted_curve, lw=0.5, color='red')
+        fig.tight_layout()
+        if GUI:
+            fig.set_size_inches(5.6, 4)
+            return fig
+        elif path is not None:
+            plt.savefig(path, dpi=250)
+        else:
+            plt.show()
+        plt.close()
+
 
 
 # WATERSHED TEST ON DENSITY IMAGE

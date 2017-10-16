@@ -32,6 +32,7 @@ class TkWindow:
         self.ra_stream = 90.
         self.dec_stream = 0.
         self.rv_stream = 45.
+        self.to_galactic = True
 
         # first step analysis variables
         self.parallax_MC_n = 1000
@@ -44,7 +45,7 @@ class TkWindow:
         self.std_control_visible = False
 
         # second step analysis variables
-        self.xyz_mc = 0
+        self.xyz_mc = 100
         self.xyz_control_visible = False
 
         # third step analysis variables
@@ -197,6 +198,9 @@ class TkWindow:
 
         # velocity vector of stream in xyz equatorial coordinate system with Earth in the center of it
         self.v_xyz_stream = compute_xyz_vel(np.deg2rad(self.ra_stream), np.deg2rad(self.dec_stream), self.rv_stream)
+        if self.to_galactic:
+            l_b_stream = coord.ICRS(ra=self.ra_stream * un.deg, dec=self.dec_stream * un.deg).transform_to(coord.Galactic)
+            self.v_xyz_stream_gal = compute_xyz_vel(np.deg2rad(l_b_stream.l.value), np.deg2rad(l_b_stream.b.value), self.rv_stream)
 
         # # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
         self.rv_stream_predicted = compute_rv(np.deg2rad(self.input_data['ra_gaia']), np.deg2rad(self.input_data['dec_gaia']),
@@ -312,7 +316,7 @@ class TkWindow:
             self.update_values_xyz(reanalyse=False)
             self.xyz_control_visible = True
         # create a stream object that is further used for the analysis
-        self.stream_obj = STREAM(self.input_data[self.idx_possible_1], radiant=[self.ra_stream, self.dec_stream])
+        self.stream_obj = STREAM(self.input_data[self.idx_possible_1], to_galactic=self.to_galactic)
         # produce visualization or the second step
         self.analysis_second_step_plots()
 
@@ -334,7 +338,10 @@ class TkWindow:
 
         # add its graphs to the tk gui
         # vel3d_fig = self.stream_obj.estimate_stream_dimensions(path=None, MC=self.mc_plot, GUI=True)
-        vel3d_fig = self.stream_obj.plot_intersections(xyz_vel_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
+        if self.to_galactic:
+            vel3d_fig = self.stream_obj.plot_intersections(xyz_vel_stream=self.v_xyz_stream_gal, path=None, MC=self.mc_plot, GUI=True)
+        else:
+            vel3d_fig = self.stream_obj.plot_intersections(xyz_vel_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
         vel3d_fig.set_size_inches(5.6, 4, forward=True)
         self.canvas_vel3d = FigureCanvasTkAgg(vel3d_fig, master=self.main_window)
         self.toolbar_inter = tk.Frame()
@@ -343,7 +350,10 @@ class TkWindow:
         toolbartemp.draw()
         self.canvas_vel3d._tkcanvas.place(x=10, y=560)
         self.canvas_vel3d.draw()
-        velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
+        if self.to_galactic:
+            velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream_gal, path=None, MC=self.mc_plot, GUI=True)
+        else:
+            velxyz_fig = self.stream_obj.plot_velocities(xyz=True, xyz_stream=self.v_xyz_stream, path=None, MC=self.mc_plot, GUI=True)
         velxyz_fig.set_size_inches(5.6, 4, forward=True)
         self.canvas_velxyz = FigureCanvasTkAgg(velxyz_fig, master=self.main_window)
         self.canvas_velxyz._tkcanvas.place(x=590, y=560)
@@ -435,30 +445,31 @@ class TkWindow:
             # acquire density image from stream object
             xyz_grid_range = 750
             xyz_grid_bins = 2000
-            density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w,
-                                                             kernel=self.den_kernel_entry.get(),
-                                                             MC=False, GUI=True, peaks=True,
-                                                             # MC should always be disabled for this
-                                                             grid_size=xyz_grid_range, grid_bins=xyz_grid_bins,
-                                                             recompute=True)
+            # density_fig = self.stream_obj.show_density_field(bandwidth=self.den_w,
+            #                                                  kernel=self.den_kernel_entry.get(),
+            #                                                  MC=False, GUI=True, peaks=True,
+            #                                                  # MC should always be disabled for this
+            #                                                  grid_size=xyz_grid_range, grid_bins=xyz_grid_bins,
+            #                                                  recompute=True)
+            density_fig = self.stream_obj.phase_intersects_analysis(GUI=True)
 
-            def callback(event):
-                x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
-                print "Selected peak at X':{0} Y':{1}".format(x_dash, y_dash)
-                # handle plots
-                if self.canvas_density_selected is not None:
-                    self.canvas_density_selected.get_tk_widget().destroy()
-                    self.canvas_density_selected.draw()
-                selected_density_fig = self.stream_obj.show_density_selection(x_img=event.xdata, y_img=event.ydata, xyz_stream=self.v_xyz_stream,
-                                                                              MC=self.mc_plot, GUI=True)
-                self.canvas_density_selected = FigureCanvasTkAgg(selected_density_fig, master=self.main_window)
-                self.canvas_density_selected._tkcanvas.place(x=1170, y=560)
-                self.canvas_density_selected.draw()
+            # def callback(event):
+            #     x_dash, y_dash = self.stream_obj.get_nearest_density_peak(x_img=event.xdata, y_img=event.ydata)
+            #     print "Selected peak at X':{0} Y':{1}".format(x_dash, y_dash)
+            #     # handle plots
+            #     if self.canvas_density_selected is not None:
+            #         self.canvas_density_selected.get_tk_widget().destroy()
+            #         self.canvas_density_selected.draw()
+            #     selected_density_fig = self.stream_obj.show_density_selection(x_img=event.xdata, y_img=event.ydata, xyz_stream=self.v_xyz_stream,
+            #                                                                   MC=self.mc_plot, GUI=True)
+            #     self.canvas_density_selected = FigureCanvasTkAgg(selected_density_fig, master=self.main_window)
+            #     self.canvas_density_selected._tkcanvas.place(x=1170, y=560)
+            #     self.canvas_density_selected.draw()
 
             # add its graphs to the tk gui
             self.canvas_density = FigureCanvasTkAgg(density_fig, master=self.main_window)
             self.canvas_density._tkcanvas.place(x=1170, y=140)
-            self.canvas_density.mpl_connect('button_press_event', callback)
+            # self.canvas_density.mpl_connect('button_press_event', callback)
             self.canvas_density.draw()
             print ' Density plotted'
         elif dbscan:
