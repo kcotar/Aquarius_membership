@@ -769,7 +769,7 @@ class STREAM:
             # function_val = parameters['offset']*np.ones(len(wvls))
             function_val = np.array(ref_data)
             for i_k in range(n_keys):
-                function_val -= parameters['amp' + str(i_k)] * np.exp(-0.5 * (parameters['wvl' + str(i_k)] - wvls) ** 2 / parameters['std' + str(i_k)])
+                function_val += parameters['amp' + str(i_k)] * np.exp(-0.5 * (parameters['wvl' + str(i_k)] - wvls) ** 2. / parameters['std' + str(i_k)] ** 2.)
             if evaluate:
                 likelihood = np.power(data - function_val, 2)
                 return likelihood
@@ -794,23 +794,18 @@ class STREAM:
         report_fit(fit_res)
         fitted_curve = gaussian_fit(fit_res.params, 0., phase_hist_pos, baseline_data, evaluate=False)
 
-        print peaks_max
-        print phase_hist
-        print phase_hist_pos
-        print baseline_data
-
         # output an plot
         fig, ax = plt.subplots(1, 1)
-        ax.bar(phase_bins[:-1], phase_hist, width=phase_step, align='edge', lw=0, alpha=0.7, color='black')
+        ax.bar(phase_bins[:-1], phase_hist, width=phase_step, align='edge', lw=0, alpha=0.5, color='black')
         # for i_p in peaks_min:
         #     print i_p, phase_bins[i_p]
         #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='red')
         # for i_p in peaks_max:
         #     print i_p, phase_bins[i_p]
         #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='green')
-        ax.plot(phase_hist_pos, spline_data, lw=0.5, color='blue')
-        ax.plot(phase_hist_pos, baseline_data, lw=0.5, color='green')
-        ax.plot(phase_hist_pos, fitted_curve, lw=0.5, color='red')
+        ax.plot(phase_hist_pos, spline_data, lw=1, color='blue')
+        ax.plot(phase_hist_pos, baseline_data, lw=1, color='green')
+        ax.plot(phase_hist_pos, fitted_curve, lw=1, color='red')
         fig.tight_layout()
         if GUI:
             fig.set_size_inches(5.6, 4)
@@ -820,6 +815,12 @@ class STREAM:
         else:
             plt.show()
         plt.close()
+
+        # TODO: analyse widths and amplitudes of peaks
+
+        # TODO: analyse radial density of the peaks
+
+        # TODO: select viable overdensities
 
 
 
