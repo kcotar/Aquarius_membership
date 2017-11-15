@@ -106,7 +106,7 @@ print 'Reading Galaxia simulations'
 # simulations matching RAVE survey
 simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/RAVE/'
 # simulation_fits = 'galaxy_rave_complete.fits'
-simulation_fits = 'galaxy_rave_fields.fits'
+simulation_fits = 'galaxy_rave_complete_fields_r3.0.fits'
 # read
 galaxia_data = Table.read(simulation_dir + simulation_fits)
 
@@ -325,7 +325,7 @@ parallax_MC = MC_values(tgas_data['parallax'], tgas_data['parallax_error'], n_MC
 # pmra_MC = MC_values(tgas_data['pmra'], tgas_data['pmra_error'], n_MC)
 # pmdec_MC = MC_values(tgas_data['pmdec'], tgas_data['pmdec_error'], n_MC)
 
-out_dir = 'Streams_investigation_MC_density_analysis'
+out_dir = 'Streams_investigation_MC_phase_density_analysis'
 if WORK_WITH_GALACTIC_XYZ:
     out_dir += '_'+simulation_fits.split('.')[0]
 move_to_dir(out_dir)
@@ -419,9 +419,20 @@ for i_stream in range(n_combinations):
     txt_o.write('\n\n\n')
     txt_o.write(suffix+'\n')
     txt_o.close()
-    stream_obj.show_density_field(bandwidth=30., kernel='epanechnikov', MC=True, peaks=True, analyze_peaks=True,
-                                  GUI=False, path=suffix+'_3_MC.png',
-                                  grid_size=750, grid_bins=2000, recompute=False, txt_out=peaks_txt)
+    # stream_obj.show_density_field(bandwidth=30., kernel='epanechnikov', MC=True, peaks=True, analyze_peaks=True,
+    #                               GUI=False, path=suffix+'_3_MC.png',
+    #                               grid_size=750, grid_bins=2000, recompute=False, txt_out=peaks_txt)
+    stream_obj.phase_intersects_analysis(GUI=False, path=suffix+'_3_MC.png', phase_step=3.)
+    peaks_galaxia = 'analysis_peaks_galaxia_compare.txt'
+    txt_o = open(peaks_galaxia, 'a')
+    txt_o.write('\n\n\n')
+    txt_o.write(suffix + '\n')
+    txt_o.close()
+    stream_obj.compare_with_simulation(galaxia_data, r_vel=10., xyz_stream=v_xyz_stream_gal,
+                                       txt_out=peaks_galaxia, img_path=suffix + '_4.png')
+    os.chdir('..')
+    continue
+
 
     peaks_galaxia = 'analysis_peaks_galaxia_compare.txt'
     if WORK_WITH_GALACTIC_XYZ:

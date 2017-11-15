@@ -5,8 +5,8 @@ import astropy.units as un
 import numpy as np
 import matplotlib.pyplot as plt
 
-RAVE = True
-GALAH = False
+RAVE = False
+GALAH = True
 
 select_percent = 25.  # aka random selection function
 select_n = None  # TODO: implement the number of selected objects per field
@@ -38,7 +38,7 @@ if RAVE:
 
     # # plt.scatter(field_ra, field_dec)
     # fig = plt.figure()
-    # ax = fig.add_subplot(111)
+    # ax = fig.add_subplot(111, projection='Mollweide')
     # print f_l
     # print f_b
     # ax.scatter((f_l), (f_b))

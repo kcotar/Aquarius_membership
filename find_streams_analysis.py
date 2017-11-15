@@ -5,16 +5,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from astropy.table import Table, vstack, Column
-from mpl_toolkits.mplot3d import Axes3D
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 from skimage.feature import peak_local_max
-from scipy.signal import find_peaks_cwt, argrelextrema, medfilt
+from scipy.signal import argrelextrema, savgol_filter
 from scipy.interpolate import splev, splrep
-from scipy.ndimage import watershed_ift
-from skimage.morphology import watershed
-from lmfit import minimize, Parameters, report_fit, Minimizer
+# from scipy.ndimage import watershed_ift
+# from skimage.morphology import watershed
+from lmfit import minimize, Parameters, report_fit
 from vector_plane_calculations import *
 import gala.coordinates as gal_coord
 
@@ -739,74 +738,121 @@ class STREAM:
         if save_output:
             txt_out.close()
 
-    def phase_intersects_analysis(self, GUI=False, path='phase.png', phase_step=2.):
+    def phase_intersects_analysis(self, GUI=False, path='phase.png', phase_step=2., parsec_step=50., phs_std_multi=2.):
         # compute phases of intersects
         phase_ang = np.rad2deg(np.arctan2(self.plane_intersects_2d[:, 0], self.plane_intersects_2d[:, 1]))
+        phase_dist = np.sqrt(np.sum(self.plane_intersects_2d**2, axis=1))
         idx_neg = phase_ang < 0.
         if np.sum(idx_neg) > 0:
             phase_ang[idx_neg] += 360.
 
         # compute distribution of the phases
         phase_hist, phase_bins = np.histogram(phase_ang, range=(0., 360.), bins=360./phase_step)
-
         # estimate offset(continuum) from the histogram distribution
         phase_hist_pos = phase_bins[:-1]+phase_step/2.
-        # chb_coef = np.polynomial.chebyshev.chebfit(phase_hist, phase_hist_pos, 32)
-        # cont_fit = np.polynomial.chebyshev.chebval(phase_hist_pos, chb_coef)
-        spline_coef = splrep(phase_hist_pos, phase_hist, k=1, s=11, per=True)
-        spline_data = splev(phase_hist_pos, spline_coef)
 
-        # do peaks analysis of the phases histogram
-        peaks_min = argrelextrema(phase_hist, np.less, order=4, mode='wrap')[0]
-        peaks_max = argrelextrema(spline_data, np.greater, order=4, mode='wrap')[0]  # as output is tuple even for 1d input
-        # baseline under the peaks of the histogram
-        baseline_coef = splrep(phase_hist_pos[peaks_min], phase_hist[peaks_min], k=4, s=None, per=True)
-        baseline_data = splev(phase_hist_pos, baseline_coef)
+        def fit_baseline_cheb(x, y, c_deg, n_step=2):
+            # initial fit before any point removal from the fit
+            chb_coef = np.polynomial.chebyshev.chebfit(x, y, c_deg)
+            base = np.polynomial.chebyshev.chebval(x, chb_coef)
+            for i_s in range(n_step):
+                y_diff = y - base
+                y_diff_std = np.nanstd(y_diff)
+                # removal of upper outliers
+                idx_up_use = np.logical_and(y_diff > 0, np.abs(y_diff) < 0.5 * y_diff_std)
+                # removal of outliers below baseline
+                idx_low_use = np.logical_and(y_diff < 0, np.abs(y_diff) < 2. * y_diff_std)
+                # final idx to be used
+                idx_use = np.logical_or(idx_up_use, idx_low_use)
+                # refit
+                chb_coef = np.polynomial.chebyshev.chebfit(phase_hist_pos[idx_use], phase_hist[idx_use], 15)
+                base = np.polynomial.chebyshev.chebval(phase_hist_pos, chb_coef)
+            return base
 
         # fit gaussian function(s) to the hist-baseline function
-        def gaussian_fit(parameters, data, wvls, ref_data, evaluate=True):
+        def gaussian_fit(parameters, data, phs, ref_data, evaluate=True):
             n_keys = (len(parameters)) / 3
-            # function_val = parameters['offset']*np.ones(len(wvls))
             function_val = np.array(ref_data)
             for i_k in range(n_keys):
-                function_val += parameters['amp' + str(i_k)] * np.exp(-0.5 * (parameters['wvl' + str(i_k)] - wvls) ** 2. / parameters['std' + str(i_k)] ** 2.)
+                function_val += parameters['amp' + str(i_k)] * np.exp(
+                    -0.5 * (parameters['phs' + str(i_k)] - phs) ** 2. / parameters['std' + str(i_k)] ** 2.)
             if evaluate:
                 likelihood = np.power(data - function_val, 2)
                 return likelihood
             else:
                 return function_val
 
+        # ----------------------
+        # ----- Phase part -----
+        # ----------------------
+
+        filtered_curve = savgol_filter(phase_hist, window_length=7, polyorder=5)
+        baseline = fit_baseline_cheb(phase_hist_pos, phase_hist, 25, n_step=4)
+        # replace curve with baseline points
+        idx_replace = (filtered_curve - baseline) < 0
+        filtered_curve[idx_replace] = baseline[idx_replace]
+        peaks_max = argrelextrema(filtered_curve, np.greater, order=4, mode='wrap')[0]
+        residual = filtered_curve - baseline
+
+        # remove peaks bellow baseline - there should be no one like this when replacing filtered with baseline for low values
+        idx_peaks_ok = residual[peaks_max] > 0
+        peaks_max = peaks_max[idx_peaks_ok]
+
+        # remove insignificant peaks or based on their height above the baseline
+        idx_peaks_ok = baseline[peaks_max] * 0.15 < residual[peaks_max]
+        peaks_max = peaks_max[idx_peaks_ok]
+
+        # Parameters class with the values to be fitted to the filtered function
         fit_param = Parameters()
         fit_keys = list([])
         for i_p in range(len(peaks_max)):
             key_std = 'std' + str(i_p)
-            fit_param.add(key_std, value=1, min=0.1, max=5)
+            fit_param.add(key_std, value=4., min=0.5, max=10., vary=True)
             fit_keys.append(key_std)
             key_amp = 'amp' + str(i_p)
-            fit_param.add(key_amp, value=1, min=0.001)
+            fit_param.add(key_amp, value=500., min=1., max=2000., vary=True)
             fit_keys.append(key_amp)
-            key_wvl = 'wvl' + str(i_p)
+            key_wvl = 'phs' + str(i_p)
             peak_loc = phase_hist_pos[peaks_max[i_p]]
-            fit_param.add(key_wvl, value=peak_loc, min=peak_loc - 5, max=peak_loc + 5, vary=False)
+            fit_param.add(key_wvl, value=peak_loc, min=peak_loc - 5., max=peak_loc + 5., vary=True)
             fit_keys.append(key_wvl)
-        fit_res = minimize(gaussian_fit, fit_param, args=(phase_hist, phase_hist_pos, baseline_data))
-        fit_res.params.pretty_print()
-        report_fit(fit_res)
-        fitted_curve = gaussian_fit(fit_res.params, 0., phase_hist_pos, baseline_data, evaluate=False)
 
-        # output an plot
+        # perform the actual fit itself
+        fit_res = minimize(gaussian_fit, fit_param, args=(filtered_curve, phase_hist_pos, baseline), method='leastsq')
+        # fit_res.params.pretty_print()  # name of the function explains everything
+        report_fit(fit_res)
+        fitted_curve = gaussian_fit(fit_res.params, 0., phase_hist_pos, baseline, evaluate=False)
+
+        # extract phase results - analyse widths and amplitudes of peaks
+        final_phase_peaks = list([])
+        res_param = fit_res.params
+        for i_k in range(len(res_param) / 3):
+            p_phs = res_param['phs' + str(i_k)].value
+            p_std = res_param['std' + str(i_k)].value
+            # evaluate number of points in the selection and remove ones with low number of
+            idx_in = np.logical_and(phase_ang < p_phs+phs_std_multi*p_std, phase_ang > p_phs-phs_std_multi*p_std)
+            if np.sum(idx_in) > self.n_samples_MC:
+                final_phase_peaks.append([p_phs, p_std])
+
+        # plot results
         fig, ax = plt.subplots(1, 1)
-        ax.bar(phase_bins[:-1], phase_hist, width=phase_step, align='edge', lw=0, alpha=0.5, color='black')
-        # for i_p in peaks_min:
-        #     print i_p, phase_bins[i_p]
-        #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='red')
-        # for i_p in peaks_max:
-        #     print i_p, phase_bins[i_p]
-        #     ax.axvline(x=phase_bins[i_p]+phase_step/2., lw=0.5, color='green')
-        ax.plot(phase_hist_pos, spline_data, lw=1, color='blue')
-        ax.plot(phase_hist_pos, baseline_data, lw=1, color='green')
+        ax.plot(phase_hist_pos, phase_hist, lw=0.5, color='black')
+        ax.plot(phase_hist_pos, baseline, lw=1, color='green')
+        ax.plot(phase_hist_pos, filtered_curve, lw=1, color='blue')
+        for i_p in peaks_max:
+            ax.axvline(x=phase_hist_pos[i_p], lw=0.5, color='green')
         ax.plot(phase_hist_pos, fitted_curve, lw=1, color='red')
+        ax.set(ylim=(0., np.max(phase_hist) * 1.05), xlim=(0., 360.))
+
+        # plot fitted peak (center and std) to the graph
+        for i_k in range(len(final_phase_peaks)):
+            p_phs = final_phase_peaks[i_k][0]
+            p_std = phs_std_multi * final_phase_peaks[i_k][1]
+            ax.axvline(x=p_phs, lw=1, color='black')
+            ax.axvspan(p_phs - p_std, p_phs + p_std, facecolor='black', alpha=0.05)
         fig.tight_layout()
+
+        # settings how to show or store derived plot
         if GUI:
             fig.set_size_inches(5.6, 4)
             return fig
@@ -816,9 +862,15 @@ class STREAM:
             plt.show()
         plt.close()
 
-        # TODO: analyse widths and amplitudes of peaks
-
-        # TODO: analyse radial density of the peaks
+        # -----------------------
+        # ----- Radial part -----
+        # -----------------------
+        for i_k in range(len(final_phase_peaks)):
+            p_phs = final_phase_peaks[i_k][0]
+            p_std = phs_std_multi * final_phase_peaks[i_k][1]
+            idx_ang_sel = np.logical_and(phase_ang < p_phs+phs_std_multi*p_std, phase_ang > p_phs-phs_std_multi*p_std)
+            parsec_dist = phase_dist[idx_ang_sel]
+            # do a similar thing as before for the phase analysis, but now for the distances inside a triangle
 
         # TODO: select viable overdensities
 
