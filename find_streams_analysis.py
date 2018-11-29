@@ -4,6 +4,8 @@ import astropy.coordinates as coord
 import matplotlib.pyplot as plt
 import numpy as np
 
+from galpy.orbit import Orbit
+from galpy.potential import MWPotential2014
 from astropy.table import Table, vstack, Column
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import KernelDensity
@@ -34,14 +36,14 @@ class STREAM:
         self.radiant = radiant
         # transform coordinates in cartesian coordinate system
         self.to_galactic = to_galactic
-        input_coord = coord.SkyCoord(ra=self.input_data['ra_gaia'] * un.deg,
-                                     dec=self.input_data['dec_gaia'] * un.deg,
+        input_coord = coord.SkyCoord(ra=self.input_data['ra'] * un.deg,
+                                     dec=self.input_data['dec'] * un.deg,
                                      distance=self.input_data['parsec'] * un.pc)
         if self.to_galactic:
             # compute pml and pmb
             ra_dec_pm = np.vstack((self.input_data['pmra'], self.input_data['pmdec'])) * un.mas/un.yr
-            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.input_data['ra_gaia'] * un.deg,
-                                                         dec=self.input_data['dec_gaia'] * un.deg), ra_dec_pm)
+            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.input_data['ra'] * un.deg,
+                                                         dec=self.input_data['dec'] * un.deg), ra_dec_pm)
             self.input_data['pml'] = l_b_pm[0].value
             self.input_data['pmb'] = l_b_pm[1].value
             # unset values
@@ -73,11 +75,11 @@ class STREAM:
         if self.to_galactic:
             xyz_vel = motion_to_cartesic(np.array(self.input_data['l']), np.array(self.input_data['b']),
                                          np.array(self.input_data['pml']), np.array(self.input_data['pmb']),
-                                         np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
+                                         np.array(self.input_data['rv']), plx=np.array(self.input_data['parallax']))
         else:
-            xyz_vel = motion_to_cartesic(np.array(self.input_data['ra_gaia']), np.array(self.input_data['dec_gaia']),
+            xyz_vel = motion_to_cartesic(np.array(self.input_data['ra']), np.array(self.input_data['dec']),
                                          np.array(self.input_data['pmra']), np.array(self.input_data['pmdec']),
-                                         np.array(self.input_data['RV']), plx=np.array(self.input_data['parallax']))
+                                         np.array(self.input_data['rv']), plx=np.array(self.input_data['parallax']))
         self.xyz_vel = np.transpose(xyz_vel)
         # store results of monte carlo simulation
         self.xyz_vel_MC = None
@@ -157,8 +159,8 @@ class STREAM:
         # create new dataset based on original data considering measurement errors using monte carlo approach
         n_input_rows = len(self.input_data)
         # n_MC_rows = n_input_rows * samples
-        cols_MC = ['RV', 'parallax', 'pmra', 'pmdec']
-        cols_const = ['id_uniq', 'sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia']
+        cols_MC = ['rv', 'parallax', 'pmra', 'pmdec']
+        cols_const = ['id_uniq', 'source_id', 'ra', 'dec']
         n_cols_MC = len(cols_MC)
         # create multiple instances of every row
         print 'Creating random observations from given error values'
@@ -167,7 +169,7 @@ class STREAM:
                 print ' MC on row '+str(i_r+1)+' out of '+str(n_input_rows)+'.'
             temp_table = Table(np.ndarray((samples, len(cols_MC)+len(cols_const))),
                                names=np.hstack((cols_const, cols_MC)).flatten(),
-                               dtype=['S32', 'i8', 'S32', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
+                               dtype=['S32', 'i8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8'])
             data_row = self.input_data[i_r]
             for i_c in range(n_cols_MC):
                 col = cols_MC[i_c]
@@ -197,14 +199,14 @@ class STREAM:
         #     print ' Removing '+str(n_bad)+' or {:.1f}% of rows with negative parallax values'.format(100.*n_bad/n_MC_rows)
         #     self.data_MC = self.data_MC[np.logical_not(idx_bad)]
         # compote cartesian coordinates od simulated data
-        MC_input_coord = coord.SkyCoord(ra=self.data_MC['ra_gaia'] * un.deg,
-                                        dec=self.data_MC['dec_gaia'] * un.deg,
+        MC_input_coord = coord.SkyCoord(ra=self.data_MC['ra'] * un.deg,
+                                        dec=self.data_MC['dec'] * un.deg,
                                         distance=1./self.data_MC['parallax']*1e3 * un.pc)
         if self.to_galactic:
             # compute pml and pmb
             ra_dec_pm = np.vstack((self.data_MC['pmra'], self.data_MC['pmdec'])) * un.mas/un.yr
-            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.data_MC['ra_gaia'] * un.deg,
-                                                         dec=self.data_MC['dec_gaia'] * un.deg), ra_dec_pm)
+            l_b_pm = gal_coord.pm_icrs_to_gal(coord.ICRS(ra=self.data_MC['ra'] * un.deg,
+                                                         dec=self.data_MC['dec'] * un.deg), ra_dec_pm)
             self.data_MC['pml'] = l_b_pm[0].value
             self.data_MC['pmb'] = l_b_pm[1].value
             # unset values
@@ -221,11 +223,11 @@ class STREAM:
         if self.to_galactic:
             xyz_vel = motion_to_cartesic(np.array(self.data_MC['l']), np.array(self.data_MC['b']),
                                          np.array(self.data_MC['pml']), np.array(self.data_MC['pmb']),
-                                         np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
+                                         np.array(self.data_MC['rv']), plx=np.array(self.data_MC['parallax']))
         else:
-            xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra_gaia']), np.array(self.data_MC['dec_gaia']),
+            xyz_vel = motion_to_cartesic(np.array(self.data_MC['ra']), np.array(self.data_MC['dec']),
                                          np.array(self.data_MC['pmra']), np.array(self.data_MC['pmdec']),
-                                         np.array(self.data_MC['RV']), plx=np.array(self.data_MC['parallax']))
+                                         np.array(self.data_MC['rv']), plx=np.array(self.data_MC['parallax']))
         self.xyz_vel_MC = np.transpose(xyz_vel)
 
     def stream_show(self, path=None, view_pos=None, MC=False):
@@ -321,7 +323,7 @@ class STREAM:
             if self.cartesian_rotated is None:
                 self._rotate_coordinate_system()
             plot_data = self.cartesian_rotated
-        plot_lim = (-1000, 1000)
+        plot_lim = (-1500, 1500)
         fig, ax = plt.subplots(1, 1)
         # compute stream parameters
         # self.stream_params = self._determine_stream_param(method='mass')
@@ -358,7 +360,7 @@ class STREAM:
         return self.stream_params
 
     def plot_intersections(self, xyz_vel_stream=None, path='intersect.png', MC=False, GUI=False):
-        plot_lim = (-1000, 1000)
+        plot_lim = (-1500, 1500)
         if MC:
             star_vel = self.xyz_vel_MC
             star_pos = self.cartesian_MC
@@ -484,7 +486,7 @@ class STREAM:
         # start actual computation of peaks
         # _, max = ndimage_extream(self.density_field)
         print 'Computing local density peaks'
-        self.density_peaks = peak_local_max(self.density_field, min_distance=2.*self.density_bandwith, num_peaks=10,
+        self.density_peaks = peak_local_max(self.density_field, min_distance=int(2.*self.density_bandwith), num_peaks=20,
                                             threshold_abs=1., threshold_rel=None)
 
     def get_nearest_density_peak(self, x_img=None, y_img=None):
@@ -499,23 +501,67 @@ class STREAM:
 
     def show_density_field(self, bandwidth=1., kernel='gaussian', MC=False, peaks=False, analyze_peaks=False,
                            GUI=False, path='density.png', txt_out=None, 
-                           grid_size=750, grid_bins=2000, recompute=False):
+                           grid_size=750, grid_bins=2000, recompute=False, plot_orbits=False, galah=None):
         self.grid_density_size = grid_size
         self.grid_density_bins = grid_bins
         if self.density_field is None or recompute:
             # compute density field from given stream data
             self._compute_density_field(bandwidth=bandwidth, kernel=kernel, MC=MC)
-        fig, ax = plt.subplots(1, 1)
-        im_ax = ax.imshow(self.density_field, interpolation=None, cmap='seismic',
-                          origin='lower', vmin=0.)#, vmax=4.)
+
         if peaks:
             # determine peaks in density field
             self._compute_density_field_peaks()
-            ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
             if analyze_peaks:
                 for i_pe in range(len(self.density_peaks[:, 1])):
-                            self.show_density_selection(x_img=self.density_peaks[i_pe, 1], y_img=self.density_peaks[i_pe, 0],
-                                                        xyz_stream=None, MC=MC, GUI=GUI, path=None, txt_out=txt_out)
+                    source_selected = self.show_density_selection(x_img=self.density_peaks[i_pe, 1], y_img=self.density_peaks[i_pe, 0],
+                                                                  xyz_stream=None, MC=MC, GUI=GUI, path=None, txt_out=txt_out)
+
+                    if plot_orbits and len(source_selected) > 0:
+                        data_plot = self.input_data[np.in1d(self.input_data['source_id'], source_selected)]
+                        ts = np.linspace(0., 100, 1e4) * un.Myr
+                        fig, ax = plt.subplots(2, 2)
+                        for star_data in data_plot:
+                            orbit = Orbit(vxvv=[np.float64(star_data['ra']) * un.deg,
+                                                np.float64(star_data['dec']) * un.deg,
+                                                1e3 / np.float64(star_data['parallax']) * un.pc,
+                                                np.float64(star_data['pmra']) * un.mas / un.yr,
+                                                np.float64(star_data['pmdec']) * un.mas / un.yr,
+                                                np.float64(star_data['rv']) * un.km / un.s],
+                                          radec=True,
+                                          ro=8.2, vo=238., zo=0.025,
+                                          solarmotion=[-11., 10., 7.25])  # as used by JBH in his paper on forced oscillations and phase mixing
+                            orbit.turn_physical_on()
+                            orbit.integrate(ts, MWPotential2014)
+                            orbit_xyz = [orbit.x(ts) * 1e3, orbit.y(ts) * 1e3, orbit.z(ts) * 1e3, orbit.R(ts) * 1e3]
+
+                            ax[0, 0].plot(orbit_xyz[0], orbit_xyz[1], lw=0.8)
+                            ax[1, 0].plot(orbit_xyz[0], orbit_xyz[2], lw=0.8)
+                            ax[0, 1].plot(orbit_xyz[2], orbit_xyz[1], lw=0.8)
+                            ax[1, 1].plot(orbit_xyz[3], orbit_xyz[2], lw=0.8)
+                        x_peak, y_peak = self.get_nearest_density_peak(self.density_peaks[i_pe, 1], self.density_peaks[i_pe, 0])
+                        fig.suptitle("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
+                        ax[0, 0].set(xlabel='X', ylabel='Y')
+                        ax[1, 0].set(xlabel='X', ylabel='Z')
+                        ax[0, 1].set(xlabel='Z', ylabel='Y')
+                        ax[1, 1].set(xlabel='R', ylabel='Z')
+                        plt.savefig(path[:-4]+'_peak{:02.0f}.png'.format(i_pe+1), dpi=250)
+                        plt.close()
+
+                    # plot orbits if requested
+                    if path is not None and len(source_selected) > 0:
+                        txt_w = open(txt_out, 'a')
+                        if galah is not None:
+                            idx_galah = np.in1d(galah['source_id'], source_selected)
+                            if np.sum(idx_galah) > 0:
+                                txt_w.write('GALAH: ' + ','.join([str(g_s_i) for g_s_i in galah['source_id'][idx_galah]])+'\n')
+                        txt_w.write('\n')
+                        txt_w.close()
+
+        fig, ax = plt.subplots(1, 1)
+        im_ax = ax.imshow(self.density_field, interpolation=None, cmap='seismic',
+                          origin='lower', vmin=0.)  # , vmax=4.)
+        if peaks:
+            ax.scatter(self.density_peaks[:, 1], self.density_peaks[:, 0], lw=0, s=8, c='#00ff00')
         fig.colorbar(im_ax)
         ax.set_axis_off()
         fig.tight_layout()
@@ -556,10 +602,11 @@ class STREAM:
         print n_in_range
         if n_in_range <= 0:
             print 'No viable object in selection'
-            return None
+            return []
 
-        input_data_selection = self.input_data['sobject_id', 'RAVE_OBS_ID', 'ra_gaia', 'dec_gaia', 'RV','pmra','pmdec','parallax'][idx_in_selection]
-        if n_in_range > 1:
+        input_data_selection = self.input_data['source_id','ra','dec', 'rv','pmra','pmdec','parallax'][idx_in_selection]
+        min_objects = 5
+        if n_in_range >= min_objects:
             # store result internally only when operating in batch mode
             if not GUI:
                 self.meaningful_peaks.append([x_peak, y_peak])
@@ -567,15 +614,18 @@ class STREAM:
             if txt_out is not None:
                 txt_w = open(txt_out, 'a')
                 txt_w.write("Peak location  X':"+str(x_peak)+"   Y':"+str(y_peak)+" \n")
-                txt_w.write(str(input_data_selection))
-                txt_w.write('\n\n')
+                txt_w.write(str(input_data_selection)+" \n")
+                txt_w.write('Source_ids: '+','.join([str(sel_s_i) for sel_s_i in self.input_data['source_id'][idx_in_selection]])+"\n")
                 txt_w.close()
             else:
                 print input_data_selection
-            print self.input_data['sobject_id', 'RAVE_OBS_ID', 'M_H'][idx_in_selection]
+            print self.input_data['source_id'][idx_in_selection]
 
         if GUI is not True and path is None:
-            return None
+            if n_in_range >= min_objects:
+                return self.input_data['source_id'][idx_in_selection]
+            else:
+                return []
 
         plot_data = self.xyz_vel[idx_in_selection]
         plot_range = 10
@@ -626,7 +676,7 @@ class STREAM:
             fig, ax = plt.subplots(1, 1)
             ax.scatter(plane_intersects_2D[:, 0], plane_intersects_2D[:, 1], lw=0, c='blue', s=2, alpha=0.3)
             ax.scatter(0, 0, lw=0, c='black', s=10, marker='*')  # solar position
-            ax.set(xlabel='X stream plane', ylabel='Y stream plane', xlim=(-1000,1000), ylim=(-1000,1000))
+            ax.set(xlabel='X stream plane', ylabel='Y stream plane', xlim=(-1500,1500), ylim=(-1500,1500))
             fig.tight_layout()
             plt.savefig(img_path, dpi=250)
             plt.close()
@@ -669,7 +719,7 @@ class STREAM:
                 txt_w.close()
 
     def show_dbscan_field(self, samples=10., eps=50, peaks=False, GUI=False, path='density.png'):
-        plot_lim = (-1000, 1000)
+        plot_lim = (-1500, 1500)
         # select the data
         data_use = self.plane_intersects_2d
         # fit the data
@@ -738,7 +788,7 @@ class STREAM:
         if save_output:
             txt_out.close()
 
-    def phase_intersects_analysis(self, GUI=False, path='phase.png', phase_step=2., parsec_step=50., phs_std_multi=2.):
+    def phase_intersects_analysis(self, GUI=False, path='phase.png', phase_step=2., parsec_step=10., phs_std_multi=2.):
         # compute phases of intersects
         phase_ang = np.rad2deg(np.arctan2(self.plane_intersects_2d[:, 0], self.plane_intersects_2d[:, 1]))
         phase_dist = np.sqrt(np.sum(self.plane_intersects_2d**2, axis=1))
@@ -748,7 +798,6 @@ class STREAM:
 
         # compute distribution of the phases
         phase_hist, phase_bins = np.histogram(phase_ang, range=(0., 360.), bins=360./phase_step)
-        # estimate offset(continuum) from the histogram distribution
         phase_hist_pos = phase_bins[:-1]+phase_step/2.
 
         def fit_baseline_cheb(x, y, c_deg, n_step=2):
@@ -831,7 +880,7 @@ class STREAM:
             p_std = res_param['std' + str(i_k)].value
             # evaluate number of points in the selection and remove ones with low number of
             idx_in = np.logical_and(phase_ang < p_phs+phs_std_multi*p_std, phase_ang > p_phs-phs_std_multi*p_std)
-            if np.sum(idx_in) > self.n_samples_MC:
+            if np.sum(idx_in) > self.n_samples_MC:  # so we have number of data worth for at least one MC star
                 final_phase_peaks.append([p_phs, p_std])
 
         # plot results
@@ -862,17 +911,33 @@ class STREAM:
             plt.show()
         plt.close()
 
-        # -----------------------
-        # ----- Radial part -----
-        # -----------------------
-        for i_k in range(len(final_phase_peaks)):
-            p_phs = final_phase_peaks[i_k][0]
-            p_std = phs_std_multi * final_phase_peaks[i_k][1]
-            idx_ang_sel = np.logical_and(phase_ang < p_phs+phs_std_multi*p_std, phase_ang > p_phs-phs_std_multi*p_std)
-            parsec_dist = phase_dist[idx_ang_sel]
-            # do a similar thing as before for the phase analysis, but now for the distances inside a triangle
+        # # -----------------------
+        # # ----- Radial part -----
+        # # -----------------------
+        # for i_k in range(len(final_phase_peaks)):
+        #     p_phs = final_phase_peaks[i_k][0]
+        #     p_std = phs_std_multi * final_phase_peaks[i_k][1]
+        #     idx_ang_sel = np.logical_and(phase_ang < p_phs+phs_std_multi*p_std, phase_ang > p_phs-phs_std_multi*p_std)
+        #     parsec_dist = phase_dist[idx_ang_sel]
+        #     # do a similar thing as before for the phase analysis, but now for the distances inside a triangle
+        #     max_parsec = 1200.
+        #     parsec_hist, parsec_bins = np.histogram(parsec_dist, range=(0, max_parsec), bins=max_parsec/parsec_step)
+        #     parsec_hist_pos = parsec_bins[:-1] + parsec_step / 2.
+        #     print p_phs
+        #     print parsec_hist
+        #     plt.title('Peak at '+str(p_phs))
+        #     plt.bar(parsec_hist_pos, parsec_hist, width=parsec_step, align='center', color='black', alpha=0.25, linewidth=0)
+        #     plt.savefig('peak_'+str(i_k)+'.png', dpi=250)
+        #     plt.close()
 
         # TODO: select viable overdensities
+
+
+def scatter_to_2d(x, y, range=[-1500, 1500], steps=10):
+    data, x_edges, y_edges = np.histogram2d(x, y, bins=steps, range=[range, range])
+    step = x_edges[1] - x_edges[0]
+    edges = x_edges[:-1] + step/2.  # x and y edges are the same
+    return data, edges
 
 
 

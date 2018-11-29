@@ -6,7 +6,7 @@ matplotlib.use('Agg')
 from velocity_transformations import *
 # from find_streams_plots import *
 from find_streams_analysis import *
-from find_streams_selection import *
+# from find_streams_selection import *
 from find_streams_analysis_functions import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.backend_bases import MouseEvent
@@ -29,13 +29,13 @@ QUIVER_WIDTH = 0.001
 class TkWindow:
     def __init__(self, w=1750, h=1000, title=''):
         # stream parameters
-        self.ra_stream = 90.
-        self.dec_stream = 0.
-        self.rv_stream = 45.
+        self.ra_stream = 164.
+        self.dec_stream = 13.
+        self.rv_stream = 220.
         self.to_galactic = True
 
         # first step analysis variables
-        self.parallax_MC_n = 1000
+        self.parallax_MC_n = 100
         self.parallax_MC = None
         self.pmra_MC = None
         self.pmdec_MC = None
@@ -203,11 +203,11 @@ class TkWindow:
             self.v_xyz_stream_gal = compute_xyz_vel(np.deg2rad(l_b_stream.l.value), np.deg2rad(l_b_stream.b.value), self.rv_stream)
 
         # # compute predicted stream pmra and pmdec, based on stars ra, dec and parsec distance
-        self.rv_stream_predicted = compute_rv(np.deg2rad(self.input_data['ra_gaia']), np.deg2rad(self.input_data['dec_gaia']),
+        self.rv_stream_predicted = compute_rv(np.deg2rad(self.input_data['ra']), np.deg2rad(self.input_data['dec']),
                                               self.v_xyz_stream)
-        self.pmra_stream_predicted = compute_pmra(np.deg2rad(self.input_data['ra_gaia']), np.deg2rad(self.input_data['dec_gaia']),
+        self.pmra_stream_predicted = compute_pmra(np.deg2rad(self.input_data['ra']), np.deg2rad(self.input_data['dec']),
                                                   self.input_data['parsec'], self.v_xyz_stream)
-        self.pmdec_stream_predicted = compute_pmdec(np.deg2rad(self.input_data['ra_gaia']), np.deg2rad(self.input_data['dec_gaia']),
+        self.pmdec_stream_predicted = compute_pmdec(np.deg2rad(self.input_data['ra']), np.deg2rad(self.input_data['dec']),
                                                     self.input_data['parsec'], self.v_xyz_stream)
         # perform first selection step
         self.analysis_first_step_selection()
@@ -230,17 +230,17 @@ class TkWindow:
         # start = time.time()
         if self.method_entry.get() is '1':
             # METHOD 1 - match proper motion values in the same sense as described in the Gaia open clusters paper
-            idx_pm_match = observations_match_mc(self.input_data['ra_gaia', 'dec_gaia', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
+            idx_pm_match = observations_match_mc(self.input_data['ra', 'dec', 'pmra', 'pmra_error', 'pmdec', 'pmdec_error'],
                                                  self.v_xyz_stream, parallax_mc=self.parallax_MC, std=self.std_pm, percent=self.set_mc_match_percent)
         elif self.method_entry.get() is '2':
             # METHOD 2
-            idx_pm_match = observations_match_mc(self.input_data['ra_gaia', 'dec_gaia', 'parallax', 'parallax_error'], self.v_xyz_stream,
+            idx_pm_match = observations_match_mc(self.input_data['ra', 'dec', 'parallax', 'parallax_error'], self.v_xyz_stream,
                                                  pmra_mc=self.pmra_MC, pmdec_mc=self.pmdec_MC, std=self.std_pm, percent=self.set_mc_match_percent)
 
         # print time.time() - start
 
         # # selection based on RV observation
-        idx_rv_match = match_values_within_std(self.input_data['RV'], self.input_data['RV_error'],
+        idx_rv_match = match_values_within_std(self.input_data['rv'], self.input_data['rv_error'],
                                                self.rv_stream_predicted, std=self.std_rv)
         # first final selection
         self.idx_possible_1 = np.logical_and(idx_pm_match, idx_rv_match)
@@ -262,11 +262,11 @@ class TkWindow:
 
         pm_fig, pm_ax = plt.subplots(1,1)
         pm_ax.set(xlim=(0, 360), ylim=(-90, 90))
-        pm_ax.scatter(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'], lw=0, c='black', s=5)
+        pm_ax.scatter(data_possible_1['ra'], data_possible_1['dec'], lw=0, c='black', s=5)
         pm_ax.scatter(self.ra_stream, self.dec_stream, lw=0, s=15, c='black', marker='*')
-        pm_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'], data_possible_1['pmra'], data_possible_1['pmdec'],
+        pm_ax.quiver(data_possible_1['ra'], data_possible_1['dec'], data_possible_1['pmra'], data_possible_1['pmdec'],
                      pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
-        pm_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'],
+        pm_ax.quiver(data_possible_1['ra'], data_possible_1['dec'],
                      self.pmra_stream_predicted[self.idx_possible_1], self.pmdec_stream_predicted[self.idx_possible_1],
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         pm_fig.tight_layout()
@@ -283,11 +283,11 @@ class TkWindow:
         dec_offset = 0.2
         rv_fig, rv_ax = plt.subplots(1, 1)
         rv_ax.set(xlim=(0, 360), ylim=(-90, 90))
-        rv_ax.scatter(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'], lw=0, c='black', s=5)
+        rv_ax.scatter(data_possible_1['ra'], data_possible_1['dec'], lw=0, c='black', s=5)
         rv_ax.scatter(self.ra_stream, self.dec_stream, lw=0, s=15, c='black', marker='*')
-        rv_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'] - dec_offset, data_possible_1['RV'], 0.,
+        rv_ax.quiver(data_possible_1['ra'], data_possible_1['dec'] - dec_offset, data_possible_1['rv'], 0.,
                      pivot='tail', scale=QUIVER_SCALE, color='green', width=QUIVER_WIDTH)
-        rv_ax.quiver(data_possible_1['ra_gaia'], data_possible_1['dec_gaia'] + dec_offset, self.rv_stream_predicted[self.idx_possible_1], 0.,
+        rv_ax.quiver(data_possible_1['ra'], data_possible_1['dec'] + dec_offset, self.rv_stream_predicted[self.idx_possible_1], 0.,
                      pivot='tail', scale=QUIVER_SCALE, color='red', width=QUIVER_WIDTH)
         rv_fig.tight_layout()
         rv_fig.set_size_inches(5.6, 4, forward=True)

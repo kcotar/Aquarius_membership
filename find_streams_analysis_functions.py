@@ -30,10 +30,37 @@ def match_values_probability(obs, obs_error, model, log_prob=-3.):
     # ratio = 2*ln(log_observed_model/log_reference_model)
 
 
+def prob_e(vr, er, v1, e1, v2=None, e2=None):
+    if v2 is not None and e2 is not None:
+        en1 = np.sqrt(er**2 + e1**2)
+        en2 = np.sqrt(er**2 + e2**2)
+        return -0.5 * ((vr - v1)**2/en1**2 + (vr - v2)**2/en2**2 + np.log(2*np.pi*en1**2) + np.log(2*np.pi*en2**2))
+    else:
+        en1 = np.sqrt(er ** 2 + e1 ** 2)
+        return -0.5 * ((vr - v1)**2/en1**2 + np.log(2*np.pi*en1**2))
+
+
+def match3(i_row):
+    data_row = GLOBAL_data[i_row]
+    obj_ra = np.deg2rad(data_row['ra'])
+    obj_dec = np.deg2rad(data_row['dec'])
+    parallax_pmra_predicted = compute_distance_pmra(obj_ra, obj_dec, GLOBAL_pmra[i_row], GLOBAL_stream, parallax=True)
+    parallax_pmdec_predicted = compute_distance_pmdec(obj_ra, obj_dec, GLOBAL_pmdec[i_row], GLOBAL_stream, parallax=True)
+    pmx_med1 = np.median(parallax_pmra_predicted)
+    pmx_med2 = np.median(parallax_pmdec_predicted)
+    pmx_std1 = np.std(parallax_pmra_predicted)
+    pmx_std2 = np.std(parallax_pmdec_predicted)
+    if pmx_std2/pmx_med2 < 0.2 and pmx_std1/pmx_med1 < 0.2:
+        return prob_e(data_row['parallax'], data_row['parallax_error'],
+                      pmx_med1, pmx_std1, pmx_med2, pmx_std2) > GLOBAL_std
+    else:
+        return False
+
+
 def match2(i_row):
     data_row = GLOBAL_data[i_row]
-    obj_ra = np.deg2rad(data_row['ra_gaia'])
-    obj_dec = np.deg2rad(data_row['dec_gaia'])
+    obj_ra = np.deg2rad(data_row['ra'])
+    obj_dec = np.deg2rad(data_row['dec'])
     parallax_pmra_predicted = compute_distance_pmra(obj_ra, obj_dec, GLOBAL_pmra[i_row], GLOBAL_stream, parallax=True)
     parallax_pmdec_predicted = compute_distance_pmdec(obj_ra, obj_dec, GLOBAL_pmdec[i_row], GLOBAL_stream, parallax=True)
     idx_match = np.logical_and(match_values_within_std(data_row['parallax'], data_row['parallax_error'], parallax_pmra_predicted, std=GLOBAL_std),
@@ -41,10 +68,26 @@ def match2(i_row):
     return np.sum(idx_match)
 
 
+def match4(i_row):
+    data_row = GLOBAL_data[i_row]
+    obj_ra = np.deg2rad(data_row['ra'])
+    obj_dec = np.deg2rad(data_row['dec'])
+    obj_parsec = 1e3 / GLOBAL_plx[i_row]
+    pmra_stream_predicted = compute_pmra(obj_ra, obj_dec, obj_parsec, GLOBAL_stream)
+    pmdec_stream_predicted = compute_pmdec(obj_ra, obj_dec, obj_parsec, GLOBAL_stream)
+    pmra_med = np.median(pmra_stream_predicted)
+    pmdec_med = np.median(pmdec_stream_predicted)
+    pmra_std = np.std(pmra_stream_predicted)
+    pmdes_std = np.std(pmdec_stream_predicted)
+    pmra_prob = prob_e(data_row['pmra'], data_row['pmra_error'], pmra_med, pmra_std) > GLOBAL_std
+    pmdec_prob = prob_e(data_row['pmdec'], data_row['pmdec_error'], pmdec_med, pmdes_std) > GLOBAL_std
+    return pmra_prob and pmdec_prob
+
+
 def match(i_row):
     data_row = GLOBAL_data[i_row]
-    obj_ra = np.deg2rad(data_row['ra_gaia'])
-    obj_dec = np.deg2rad(data_row['dec_gaia'])
+    obj_ra = np.deg2rad(data_row['ra'])
+    obj_dec = np.deg2rad(data_row['dec'])
     obj_parsec = 1e3 / GLOBAL_plx[i_row]
     pmra_stream_predicted = compute_pmra(obj_ra, obj_dec, obj_parsec, GLOBAL_stream)
     pmdec_stream_predicted = compute_pmdec(obj_ra, obj_dec, obj_parsec, GLOBAL_stream)
@@ -87,13 +130,16 @@ def observations_match_mc(data, xyz_stream, parallax_mc=None, pmra_mc=None, pmde
     # plt.show()
     # plt.close()
 
-    pool = Pool(processes=16)
+    pool = Pool(processes=25)
     if parallax_mc is not None:
-        n_matches = np.array(pool.map(match, range(n_rows)))
+        # n_matches = np.array(pool.map(match, range(n_rows)))
+        n_matches = np.array(pool.map(match4, range(n_rows)))
     elif pmra_mc is not None and pmdec_mc is not None:
-        n_matches = np.array(pool.map(match2, range(n_rows)))
+        # n_matches = np.array(pool.map(match2, range(n_rows)))
+        n_matches = np.array(pool.map(match3, range(n_rows)))
     pool.close()
     # n_matches = np.array(Parallel(n_jobs=25)(delayed(match)(i_row) for i_row in range(n_rows)))
+
     GLOBAL_data = None
     GLOBAL_plx = None
     GLOBAL_pmra = None

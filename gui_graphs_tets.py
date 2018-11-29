@@ -11,16 +11,17 @@ from tk_window_class import *
 
 # read GALAH and RAVE data - used for radial velocity data
 print 'Reading data sets'
-out_file_fits = 'RAVE_GALAH_TGAS_stack.fits'
-tgas_data = Table.read(out_file_fits)
+
+data_dir = '/data4/cotar/'
+tgas_data = Table.read(data_dir + 'Gaia_DR2_RV/GaiaSource_combined_RV.fits')
 
 # perform some data cleaning and housekeeping
 idx_ok = tgas_data['parallax'] > 0  # remove negative parallaxes - objects far away or problems in data reduction
+
 idx_ok = np.logical_and(idx_ok,
-                        np.isfinite(tgas_data['ra_gaia','dec_gaia','pmra','pmdec','RV','parallax'].to_pandas().values).all(axis=1))
-# remove observations with large RV uncertainties
-idx_ok = np.logical_and(idx_ok,
-                        tgas_data['RV_error'] < 5.)
+                        np.isfinite(tgas_data['ra','dec','pmra','pmdec','rv','parallax'].to_pandas().values).all(axis=1))
+# idx_ok = np.logical_and(idx_ok,
+#                         tgas_data['RV_error'] < 5.)
 print 'Number of removed observations: '+str(len(tgas_data)-np.sum(idx_ok))
 tgas_data = tgas_data[idx_ok]
 print 'Number of valid observations: '+str(len(tgas_data))
@@ -28,13 +29,11 @@ print 'Number of valid observations: '+str(len(tgas_data))
 # remove problems with masks
 tgas_data = tgas_data.filled()
 # remove duplicates
-tgas_data = unique(tgas_data, keys=['ra_gaia', 'dec_gaia'], keep='first')
+tgas_data = unique(tgas_data, keys=['ra', 'dec'], keep='first')
 # convert parallax to parsec distance
 tgas_data.add_column(Column(1e3/tgas_data['parallax'].data, name='parsec'))
-# add systematic error to the parallax uncertainties as suggested for the TGAS dataset
-tgas_data['parallax_error'] = np.sqrt(tgas_data['parallax_error'].data**2 + 0.3**2)
 # limit data by parsec
-tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 2000, tgas_data['parsec'] > 0)]
+tgas_data = tgas_data[np.logical_and(tgas_data['parsec'] < 5000, tgas_data['parsec'] > 0)]
 print 'Number of points after distance limits: ' + str(len(tgas_data))
 
 window = TkWindow()

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 RAVE = False
 GALAH = True
 
-select_percent = 25.  # aka random selection function
+select_percent = 100.  # aka random selection function
 select_n = None  # TODO: implement the number of selected objects per field
 
 if select_percent < 100:
@@ -17,7 +17,7 @@ if select_percent < 100:
     np.random.seed(set_seed)
 
 if RAVE:
-    simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/RAVE/'
+    simulation_dir = '/home/klemen/GALAH_data_depricated/Galaxia_simulation/RAVE/'
     rave_data = '/home/klemen/RAVE_data/RAVE_DR5.fits'
     galaxia_complete_fits ='galaxy_rave_complete.fits'
     simulation_fields = 'fields_rave.txt'
@@ -45,9 +45,9 @@ if RAVE:
     # plt.show()
 
 if GALAH:
-    simulation_dir = '/home/klemen/GALAH_data/Galaxia_simulation/GALAH/'
+    simulation_dir = '/home/klemen/GALAH_data_depricated/Galaxia_simulation/GALAH/'
     fields_original = 'fields_galah.csv'
-    galaxia_complete_fits = 'galaxy_galah_complete.fits'
+    galaxia_complete_fits = 'galaxy_galah_complete_mag_10_16.fits'
     simulation_fields = fields_original.split('.')[0]+'.txt'
 
     r_field = 1.  # radius in degrees
@@ -60,8 +60,8 @@ if GALAH:
     fields = fields[np.logical_and(fields['cenra'] != 0, fields['cendec'] != 0)]
     print len(fields)
     fields = fields.filled()
+    fields = fields[np.abs(fields['cendec']) <= 90]
     fields_uniq = unique(fields, keys=('cenra', 'cendec'))
-    print len(fields_uniq)
 
     # convert to galactic coordinates
     coords = coord.ICRS(ra=fields_uniq['cenra'].data*un.deg, dec=fields_uniq['cendec'].data*un.deg).transform_to(coord.Galactic)
