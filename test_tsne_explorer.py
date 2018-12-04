@@ -35,7 +35,7 @@ class PointSelector:
 data_dir = '/data4/cotar/'
 gaia_data = Table.read(data_dir + 'Gaia_DR2_RV/GaiaSource_combined_RV.fits')
 
-proj_data = Table.read('gaia_tsne_embeded_ra142.7_dec63.7_rad25_norm_p20_t04_all.fits')
+proj_data = Table.read('gaia_tsne_embeded_ra288.4_dec36.4_rad10_std_p30_t04_all.fits')
 
 fig, ax = plt.subplots(1, 1)
 ax.scatter(proj_data['tsne_axis1'], proj_data['tsne_axis2'], c='black', s=2, lw=0)
