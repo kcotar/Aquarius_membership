@@ -32,10 +32,11 @@ class PointSelector:
             print 'Number of vertices in selection is too small'
 
 
-data_dir = '/data4/cotar/'
-gaia_data = Table.read(data_dir + 'Gaia_DR2_RV/GaiaSource_combined_RV.fits')
+# data_dir = '/data4/cotar/'
+# gaia_data = Table.read(data_dir + 'Gaia_DR2_RV/GaiaSource_combined_RV.fits')
 
-proj_data = Table.read('gaia_tsne_embeded_ra288.4_dec36.4_rad10_std_p30_t04_all.fits')
+proj_dir = '/shared/data-camelot/cotar/tSNE_Gaia_orbits_r10_allparams_clustercenters/'
+proj_data = Table.read(proj_dir+'gaia_tsne_embeded_ra56.6_dec24.1_rad10_p50_t05_all.fits')
 
 fig, ax = plt.subplots(1, 1)
 ax.scatter(proj_data['tsne_axis1'], proj_data['tsne_axis2'], c='black', s=2, lw=0)
